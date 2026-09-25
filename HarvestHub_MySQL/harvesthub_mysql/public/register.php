@@ -26,9 +26,6 @@ if ($user = currentUser()) {
     </div>
 
     <h2 class="login-title">Create an Account</h2>
-    <p class="signup-hint" style="margin-top: -12px; margin-bottom: 22px;">
-      This creates a request — a system administrator has to approve it before you can log in.
-    </p>
 
     <form id="register-form" novalidate>
 
