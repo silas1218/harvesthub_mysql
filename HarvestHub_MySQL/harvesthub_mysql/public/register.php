@@ -14,7 +14,7 @@ if ($user = currentUser()) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=2">
 </head>
 <body>
 <div class="login-shell">
@@ -96,11 +96,22 @@ if ($user = currentUser()) {
       <div class="field-row">
         <div class="field">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" autocomplete="new-password" minlength="6" required>
+          <input type="password" id="password" name="password" autocomplete="new-password" required>
+          
+          <!-- Live Password Checklist -->
+          <ul id="password-reqs" class="password-reqs">
+            <li id="req-length" class="invalid">At least 8 characters</li>
+            <li id="req-upper" class="invalid">At least 1 uppercase letter</li>
+            <li id="req-lower" class="invalid">At least 1 lowercase letter</li>
+            <li id="req-num" class="invalid">At least 1 number</li>
+            <li id="req-special" class="invalid">At least 1 special character</li>
+          </ul>
         </div>
         <div class="field">
           <label for="confirm-password">Confirm Password</label>
-          <input type="password" id="confirm-password" name="confirm_password" autocomplete="new-password" minlength="6" required>
+          <input type="password" id="confirm-password" name="confirm_password" autocomplete="new-password" 
+                 minlength="8" 
+                 required>
         </div>
       </div>
 
@@ -115,6 +126,6 @@ if ($user = currentUser()) {
   </div>
 </div>
 
-<script src="assets/register.js?v=3"></script>
+<script src="assets/register.js?v=4"></script>
 </body>
 </html>

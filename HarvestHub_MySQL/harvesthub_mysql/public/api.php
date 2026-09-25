@@ -235,7 +235,10 @@ try {
 
             if (!in_array($location, NCR_CITIES, true)) $errors[] = 'Please choose a valid NCR city.';
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email is required.';
-            if (mb_strlen($password) < 6) $errors[] = 'Password must be at least 6 characters.';
+            // Enforce password complexity: 8+ chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+            if (!preg_match('/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}$/', $password)) {
+                respond(['ok' => false, 'error' => 'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.'], 422);
+            }
             if ($password !== $confirmPassword) $errors[] = 'Passwords do not match.';
             
             if ($errors) respond(['ok' => false, 'errors' => $errors], 422);
@@ -319,8 +322,8 @@ try {
             $token = $_POST['token'] ?? '';
             $newPassword = $_POST['password'] ?? '';
 
-            if (mb_strlen($newPassword) < 6) {
-                respond(['ok' => false, 'error' => 'Password must be at least 6 characters.'], 422);
+            if (!preg_match('/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}$/', $newPassword)) {
+                respond(['ok' => false, 'error' => 'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.'], 422);
             }
 
             // 1. Verify the token

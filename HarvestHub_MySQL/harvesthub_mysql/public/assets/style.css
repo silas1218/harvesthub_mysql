@@ -1221,3 +1221,39 @@ table.data-table {
 }
 .back-link:hover { text-decoration: underline; }
 
+/* Password Live Validation Styles */
+.password-reqs {
+  list-style-type: none;
+  padding: 0;
+  margin: 8px 0 15px 0;
+  font-size: 0.85em;
+  display: none; /* Hides the list by default */
+}
+
+/* JavaScript will add this class when the field is clicked */
+.password-reqs.active {
+  display: block; 
+}
+
+.password-reqs li {
+  color: #d9534f; /* Red for missing requirements */
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s ease;
+}
+
+.password-reqs li::before {
+  content: '❌';
+  margin-right: 8px;
+  font-size: 0.9em;
+}
+
+/* When the JS adds the 'valid' class, it turns green and changes the icon */
+.password-reqs li.valid {
+  color: #2b7a4b; /* Green for met requirements */
+}
+
+.password-reqs li.valid::before {
+  content: '✅';
+}

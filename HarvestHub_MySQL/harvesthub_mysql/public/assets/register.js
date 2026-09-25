@@ -136,3 +136,45 @@ form.addEventListener('submit', async (e) => {
     submitBtn.disabled = false;
   }
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+    const passwordInput = document.getElementById('password');
+    const reqList = document.getElementById('password-reqs');
+    
+    if (passwordInput && reqList) {
+        // 1. Show the checklist when the user clicks the password field
+        passwordInput.addEventListener('focus', () => {
+            reqList.classList.add('active');
+        });
+
+        // 2. Hide the checklist when they click away (only if empty or fully valid)
+        passwordInput.addEventListener('blur', () => {
+            const isValid = document.querySelectorAll('.password-reqs li.valid').length === 5;
+            if (passwordInput.value === '' || isValid) {
+                reqList.classList.remove('active');
+            }
+        });
+
+        // 3. The live validation checker
+        passwordInput.addEventListener('input', function() {
+            const val = this.value;
+            
+            const toggleValid = (id, isValid) => {
+                const el = document.getElementById(id);
+                if (isValid) {
+                    el.classList.add('valid');
+                    el.classList.remove('invalid');
+                } else {
+                    el.classList.add('invalid');
+                    el.classList.remove('valid');
+                }
+            };
+
+            toggleValid('req-length', val.length >= 8);
+            toggleValid('req-upper', /[A-Z]/.test(val));
+            toggleValid('req-lower', /[a-z]/.test(val));
+            toggleValid('req-num', /\d/.test(val));
+            toggleValid('req-special', /[\W_]/.test(val));
+        });
+    }
+});
