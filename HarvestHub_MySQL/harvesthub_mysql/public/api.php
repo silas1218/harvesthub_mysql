@@ -7,7 +7,7 @@
  * statements — client-side checks in the dashboards are for UX only.
  *
  *  AUTH (public)
- *    POST action=login        { role, email, password }
+ *    POST action=login        { email, password }
  *    POST action=logout
  *
  *  CUSTOMER (requires customer session)
@@ -58,8 +58,7 @@ function requireJsonRole(string $role): array {
     return $user;
 }
 
-// Whitelisted sort options for the Exchange Board — never interpolate
-// raw user input into ORDER BY.
+// Whitelisted sort options for the Exchange Board
 const SORT_OPTIONS = [
     'newest'   => 'L.CreatedAt DESC',
     'oldest'   => 'L.CreatedAt ASC',
@@ -79,38 +78,52 @@ try {
         // ---------------- AUTH ----------------
 
         case 'login': {
-            $role = $_POST['role'] ?? '';
             $email = trim($_POST['email'] ?? '');
             $password = $_POST['password'] ?? '';
 
-            $table = match ($role) {
-                'admin' => 'SYSTEM_ADMINISTRATOR',
-                'staff' => 'GARDEN_COORDINATOR',
-                'customer' => 'COMMUNITY_GARDENER',
-                default => null,
-            };
-            if (!$table || $email === '' || $password === '') {
+            if ($email === '' || $password === '') {
                 respond(['ok' => false, 'error' => 'Please fill in all fields.'], 422);
             }
 
-            $idCol = match ($role) {
-                'admin' => 'AdminID',
-                'staff' => 'CoordID',
-                'customer' => 'GardenerID',
-            };
+            $userRecord = null;
+            $role = null;
 
-            $stmt = $pdo->prepare("SELECT * FROM $table WHERE Email = ?");
+            // 1. Check if the user is a Community Gardener
+            $stmt = $pdo->prepare("SELECT GardenerID as id, Name, PasswordHash FROM COMMUNITY_GARDENER WHERE Email = ?");
             $stmt->execute([$email]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $userRecord = $row;
+                $role = 'customer';
+            }
 
-            if (!$row || !password_verify($password, $row['PasswordHash'])) {
+            // 2. Check if the user is a Garden Coordinator
+            if (!$userRecord) {
+                $stmt = $pdo->prepare("SELECT CoordID as id, Name, PasswordHash FROM GARDEN_COORDINATOR WHERE Email = ?");
+                $stmt->execute([$email]);
+                if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $userRecord = $row;
+                    $role = 'staff';
+                }
+            }
+
+            // 3. Check if the user is a System Administrator
+            if (!$userRecord) {
+                $stmt = $pdo->prepare("SELECT AdminID as id, Name, PasswordHash FROM SYSTEM_ADMINISTRATOR WHERE Email = ?");
+                $stmt->execute([$email]);
+                if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $userRecord = $row;
+                    $role = 'admin';
+                }
+            }
+
+            if (!$userRecord || !password_verify($password, $userRecord['PasswordHash'])) {
                 respond(['ok' => false, 'error' => 'Invalid email or password.'], 401);
             }
 
             $_SESSION['user'] = [
                 'role' => $role,
-                'id' => (int) $row[$idCol],
-                'name' => $row['Name'],
+                'id' => (int) $userRecord['id'],
+                'name' => $userRecord['Name'],
             ];
             respond(['ok' => true, 'redirect' => loginRedirectFor($role)]);
         }
@@ -128,8 +141,15 @@ try {
             $email = trim($_POST['email'] ?? '');
             $password = $_POST['password'] ?? '';
             $confirmPassword = $_POST['confirm_password'] ?? '';
-            $role = $_POST['role'] ?? '';
-            $shift = trim($_POST['shift'] ?? 'Morning');
+            
+            // Automatically determine role based on email domain
+            $role = 'customer'; // Default role
+            if (str_ends_with(strtolower($email), '@staff.harvesthub.com')) {
+                $role = 'staff';
+            }
+
+            // Set a default shift for coordinators
+            $shift = 'Morning';
 
             $errors = [];
             
@@ -153,8 +173,7 @@ try {
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'A valid email is required.';
             if (mb_strlen($password) < 6) $errors[] = 'Password must be at least 6 characters.';
             if ($password !== $confirmPassword) $errors[] = 'Passwords do not match.';
-            if (!in_array($role, ['customer', 'staff'], true)) $errors[] = 'Please choose a role.';
-            if ($role === 'staff' && !in_array($shift, ['Morning', 'Afternoon'], true)) $errors[] = 'Please choose a valid coordinator shift.';
+            
             if ($errors) respond(['ok' => false, 'errors' => $errors], 422);
 
             // An email already active as any account, or already sitting

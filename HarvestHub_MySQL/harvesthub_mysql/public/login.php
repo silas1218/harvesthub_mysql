@@ -27,15 +27,7 @@ if ($user = currentUser()) {
 
     <h2 class="login-title">Login</h2>
 
-    <div class="role-tabs" id="role-tabs">
-      <button type="button" class="role-tab active" data-role="customer">Gardener</button>
-      <button type="button" class="role-tab" data-role="staff">Coordinator</button>
-      <button type="button" class="role-tab" data-role="admin">Admin</button>
-    </div>
-
     <form id="login-form" novalidate>
-      <input type="hidden" id="role" name="role" value="customer">
-
       <div class="field field-underline">
         <label for="email">Email</label>
         <input type="email" id="email" name="email" required>
@@ -68,6 +60,6 @@ if ($user = currentUser()) {
   </div>
 </div>
 
-<script src="assets/login.js"></script>
+<script src="assets/login.js?v=2"></script>
 </body>
 </html>
