@@ -178,3 +178,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Prevent copy, cut, and paste in password fields
+document.addEventListener('DOMContentLoaded', () => {
+    const passwordFields = ['password', 'confirm-password'];
+    
+    passwordFields.forEach(id => {
+        const inputElement = document.getElementById(id);
+        if (inputElement) {
+            inputElement.addEventListener('copy', (e) => e.preventDefault());
+            inputElement.addEventListener('cut', (e) => e.preventDefault());
+            inputElement.addEventListener('paste', (e) => e.preventDefault());
+        }
+    });
+});
