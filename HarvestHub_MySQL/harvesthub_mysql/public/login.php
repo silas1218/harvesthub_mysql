@@ -4,6 +4,9 @@ if ($user = currentUser()) {
     header('Location: ' . loginRedirectFor($user['role']));
     exit;
 }
+
+// Retrieve the saved email if it exists
+$savedEmail = $_COOKIE['remembered_email'] ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -30,7 +33,8 @@ if ($user = currentUser()) {
     <form id="login-form" novalidate>
       <div class="field field-underline">
         <label for="email">Email</label>
-        <input type="email" id="email" name="email" required>
+        <!-- Inject the saved email here -->
+        <input type="email" id="email" name="email" value="<?= htmlspecialchars($savedEmail, ENT_QUOTES, 'UTF-8') ?>" required>
       </div>
 
       <div class="field field-underline">
@@ -40,7 +44,8 @@ if ($user = currentUser()) {
 
       <div class="login-row">
         <label class="remember-me">
-          <input type="checkbox" id="remember">
+          <!-- Automatically check the box if we have a saved email -->
+          <input type="checkbox" id="remember" <?= $savedEmail !== '' ? 'checked' : '' ?>>
           Remember Me
         </label>
         <a href="#" class="forgot-link">Forgot Password</a>
@@ -60,6 +65,6 @@ if ($user = currentUser()) {
   </div>
 </div>
 
-<script src="assets/login.js?v=2"></script>
+<script src="assets/login.js?v=4"></script>
 </body>
 </html>

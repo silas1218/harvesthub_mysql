@@ -125,10 +125,23 @@ try {
                 'id' => (int) $userRecord['id'],
                 'name' => $userRecord['Name'],
             ];
+
+            // If checked, save the email. If unchecked, delete the cookie.
+            if (($_POST['remember'] ?? '0') === '1') {
+                setcookie('remembered_email', $email, time() + (86400 * 30), '/');
+            } else {
+                setcookie('remembered_email', '', time() - 3600, '/');
+            }
+
+            respond(['ok' => true, 'redirect' => loginRedirectFor($role)]);
+
             respond(['ok' => true, 'redirect' => loginRedirectFor($role)]);
         }
 
         case 'logout':
+            // Destroy the remember me cookie by setting its expiration to the past
+            setcookie('remember_me', '', time() - 3600, '/');
+            
             $_SESSION = [];
             session_destroy();
             respond(['ok' => true, 'redirect' => 'login.php']);

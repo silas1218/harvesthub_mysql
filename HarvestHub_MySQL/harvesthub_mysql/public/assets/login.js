@@ -10,6 +10,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     action: 'login',
     email: document.getElementById('email').value.trim(),
     password: document.getElementById('password').value,
+    remember: document.getElementById('remember').checked ? '1' : '0'
   });
 
   try {
