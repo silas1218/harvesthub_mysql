@@ -39,6 +39,57 @@
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/auth.php';
 
+function sendResetEmail($toEmail, $resetLink) {
+    // Your Bird API Key
+    $apiKey = 'bk_eu1_5vCFHtcgJ9G2iPdwf5EIaYT4AbFB5'; 
+    
+    // Bird requires you to use the regional host that matches your key prefix (eu1)
+    $apiUrl = 'https://eu1.platform.bird.com/v1/email/messages';
+
+    $htmlContent = "
+        <h2>HarvestHub Password Reset</h2>
+        <p>You requested a password reset. Click the link below to set a new password:</p>
+        <p><a href='{$resetLink}'>Reset Password</a></p>
+        <p>If you did not request this, please ignore this email.</p>
+    ";
+
+    $payload = [
+        'from' => [
+            // During onboarding, you must use this exact testing email address
+            'email' => 'onboarding@messagebird.dev', 
+            'name' => 'HarvestHub'
+        ],
+        'to' => [$toEmail],
+        'subject' => 'Reset your HarvestHub password',
+        'html' => $htmlContent
+    ];
+
+    $ch = curl_init($apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $apiKey,
+        'Content-Type: application/json',
+        'Accept: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    // 1. Check if the server failed to connect entirely
+    if ($curlError) {
+        respond(['ok' => false, 'error' => "Connection Error: " . $curlError], 500);
+    }
+    
+    // 2. Check if Bird rejected the email (HTTP codes 400 and above are errors)
+    if ($httpCode >= 400) {
+        respond(['ok' => false, 'error' => "Bird API Error: " . $response], 500);
+    }
+}
+
 header('Content-Type: application/json');
 
 $pdo = getDb();
@@ -215,6 +266,83 @@ try {
                 $role,
                 $shift,
             ]);
+            respond(['ok' => true]);
+        }
+
+        // ---------------- PASSWORD RESET ----------------
+
+        case 'forgot_password': {
+            $email = trim($_POST['email'] ?? '');
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                respond(['ok' => false, 'error' => 'Please enter a valid email address.'], 422);
+            }
+
+            // 1. Verify the email exists in ANY of our user tables
+            $stmt = $pdo->prepare("
+                SELECT Email FROM COMMUNITY_GARDENER WHERE Email = ?
+                UNION SELECT Email FROM GARDEN_COORDINATOR WHERE Email = ?
+                UNION SELECT Email FROM SYSTEM_ADMINISTRATOR WHERE Email = ?
+            ");
+            $stmt->execute([$email, $email, $email]);
+            
+            // Temporarily throw an error so we can debug
+            if (!$stmt->fetchColumn()) {
+                respond(['ok' => false, 'error' => 'Not found in database!'], 404); 
+            }
+
+            // 2. Generate a secure random token
+            $token = bin2hex(random_bytes(32));
+            $tokenHash = hash('sha256', $token);
+            $expiresAt = date('Y-m-d H:i:s', time() + 3600); // 1 hour expiration
+
+            // 3. Store the hashed token (Upsert so old tokens are overwritten)
+            $pdo->prepare("
+                INSERT INTO PASSWORD_RESET (Email, TokenHash, ExpiresAt) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE TokenHash = VALUES(TokenHash), ExpiresAt = VALUES(ExpiresAt)
+            ")->execute([$email, $tokenHash, $expiresAt]);
+
+            // 4. Send the email using a cURL helper function
+            // Make sure to change 'localhost...' to your actual domain when deploying
+            // Automatically detect the current folder path so the link works anywhere
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+            $baseDir = dirname($_SERVER['REQUEST_URI']);
+            $resetLink = $protocol . $_SERVER['HTTP_HOST'] . $baseDir . "/reset_password.php?email=" . urlencode($email) . "&token=" . $token;
+            
+            sendResetEmail($email, $resetLink);
+
+            respond(['ok' => true]);
+        }
+
+        case 'reset_password': {
+            $email = trim($_POST['email'] ?? '');
+            $token = $_POST['token'] ?? '';
+            $newPassword = $_POST['password'] ?? '';
+
+            if (mb_strlen($newPassword) < 6) {
+                respond(['ok' => false, 'error' => 'Password must be at least 6 characters.'], 422);
+            }
+
+            // 1. Verify the token
+            $tokenHash = hash('sha256', $token);
+            $stmt = $pdo->prepare("SELECT ExpiresAt FROM PASSWORD_RESET WHERE Email = ? AND TokenHash = ?");
+            $stmt->execute([$email, $tokenHash]);
+            $expiresAt = $stmt->fetchColumn();
+
+            if (!$expiresAt || strtotime($expiresAt) < time()) {
+                respond(['ok' => false, 'error' => 'Invalid or expired reset link. Please request a new one.'], 403);
+            }
+
+            // 2. Update the password in whichever table the user belongs to
+            $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
+            
+            $pdo->prepare("UPDATE COMMUNITY_GARDENER SET PasswordHash = ? WHERE Email = ?")->execute([$hashedPassword, $email]);
+            $pdo->prepare("UPDATE GARDEN_COORDINATOR SET PasswordHash = ? WHERE Email = ?")->execute([$hashedPassword, $email]);
+            $pdo->prepare("UPDATE SYSTEM_ADMINISTRATOR SET PasswordHash = ? WHERE Email = ?")->execute([$hashedPassword, $email]);
+
+            // 3. Delete the used token
+            $pdo->prepare("DELETE FROM PASSWORD_RESET WHERE Email = ?")->execute([$email]);
+
             respond(['ok' => true]);
         }
 
@@ -721,5 +849,6 @@ try {
             respond(['ok' => false, 'error' => 'Unknown action.'], 400);
     }
 } catch (Throwable $e) {
-    respond(['ok' => false, 'error' => 'Server error.'], 500);
+    // This will print the exact SQL or PHP error to your screen
+    respond(['ok' => false, 'error' => 'Error: ' . $e->getMessage()], 500);
 }

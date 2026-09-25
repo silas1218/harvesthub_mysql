@@ -44,6 +44,14 @@ CREATE TABLE COMMUNITY_GARDENER (
     Location     VARCHAR(60)   NULL
 ) ENGINE=InnoDB;
 
+
+CREATE TABLE PASSWORD_RESET (
+    Email VARCHAR(255) NOT NULL,
+    TokenHash VARCHAR(64) NOT NULL,
+    ExpiresAt DATETIME NOT NULL,
+    PRIMARY KEY (Email)
+);
+
 -- ---------------------------------------------------------
 -- Plots
 -- ---------------------------------------------------------

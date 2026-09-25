@@ -48,7 +48,7 @@ $savedEmail = $_COOKIE['remembered_email'] ?? '';
           <input type="checkbox" id="remember" <?= $savedEmail !== '' ? 'checked' : '' ?>>
           Remember Me
         </label>
-        <a href="#" class="forgot-link">Forgot Password</a>
+        <a href="forgot_password.php" class="forgot-link">Forgot Password</a>
       </div>
 
       <button type="submit" class="btn btn-light btn-block">Log in</button>
