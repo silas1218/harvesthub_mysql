@@ -510,6 +510,143 @@ try {
             respond(['ok' => true]);
         }
 
+        // ---------------------------------------------------------
+        // Exchange Board Endpoints
+        // ---------------------------------------------------------
+
+        case 'exchange_feed': {
+            $user = requireJsonRole('customer');
+            $stmt = $pdo->query("SELECT * FROM EXCHANGE_BOARD WHERE Status = 'Active' ORDER BY CreatedAt DESC");
+            respond([
+                'ok' => true, 
+                'current_user_id' => $user['id'], // Added so JS knows who is logged in
+                'posts' => $stmt->fetchAll(PDO::FETCH_ASSOC)
+            ]);
+        }
+
+        case 'my_exchange_listings': {
+            $user = requireJsonRole('customer');
+            $stmt = $pdo->prepare("SELECT * FROM EXCHANGE_BOARD WHERE GardenerID = ? AND Status = 'Active' ORDER BY CreatedAt DESC");
+            $stmt->execute([$user['id']]);
+            respond(['ok' => true, 'posts' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        }
+
+        case 'add_exchange_post': {
+            $user = requireJsonRole('customer');
+            $item = trim($_POST['item'] ?? '');
+            $qty = trim($_POST['qty'] ?? '');
+            $desc = trim($_POST['desc'] ?? '');
+
+            if (empty($item) || empty($qty)) {
+                respond(['ok' => false, 'error' => 'Item and Quantity are required.'], 422);
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO EXCHANGE_BOARD (GardenerID, ProduceName, Qty, Description) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$user['id'], $item, $qty, $desc]);
+            
+            if ($stmt->rowCount() > 0) {
+                respond(['ok' => true]);
+            } else {
+                respond(['ok' => false, 'error' => 'Failed to create post.'], 400);
+            }
+        }
+
+        case 'close_exchange_post': {
+            $user = requireJsonRole('customer');
+            $postId = (int)($_POST['post_id'] ?? 0);
+
+            $stmt = $pdo->prepare("UPDATE EXCHANGE_BOARD SET Status = 'Completed' WHERE PostID = ? AND GardenerID = ?");
+            $stmt->execute([$postId, $user['id']]);
+            respond(['ok' => true]);
+        }
+
+        // ---------------------------------------------------------
+        // Claim Management Endpoints
+        // ---------------------------------------------------------
+
+        case 'send_claim_request': {
+            $user = requireJsonRole('customer');
+            $postId = (int)($_POST['post_id'] ?? 0);
+            $qty = trim($_POST['qty'] ?? '');
+            $pickup = trim($_POST['pickup'] ?? '');
+
+            if (!$postId || empty($qty) || empty($pickup)) {
+                respond(['ok' => false, 'error' => 'All fields are required.'], 422);
+            }
+            
+            $stmt = $pdo->prepare("INSERT INTO EXCHANGE_CLAIMS (PostID, RequesterID, QtyWanted, PickupDetails) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$postId, $user['id'], $qty, $pickup]);
+            respond(['ok' => true]);
+        }
+
+        case 'my_pending_claims': {
+            $user = requireJsonRole('customer');
+            // Fetch claims made by others on posts owned by the logged-in user
+            $stmt = $pdo->prepare("
+                SELECT c.ClaimID, c.QtyWanted, c.PickupDetails, c.CreatedAt, b.ProduceName 
+                FROM EXCHANGE_CLAIMS c 
+                JOIN EXCHANGE_BOARD b ON c.PostID = b.PostID 
+                WHERE b.GardenerID = ? AND c.Status = 'Pending'
+                ORDER BY c.CreatedAt ASC
+            ");
+            $stmt->execute([$user['id']]);
+            respond(['ok' => true, 'claims' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        }
+
+        case 'handle_claim_request': {
+            $user = requireJsonRole('customer');
+            $claimId = (int)($_POST['claim_id'] ?? 0);
+            $status = $_POST['status'] ?? ''; // 'Accepted' or 'Rejected'
+
+            if (!in_array($status, ['Accepted', 'Rejected'])) {
+                respond(['ok' => false, 'error' => 'Invalid action.'], 422);
+            }
+
+            // 1. Fetch the claim and board data to verify ownership and check quantities
+            $stmt = $pdo->prepare("
+                SELECT c.QtyWanted, b.Qty as CurrentQty, b.PostID 
+                FROM EXCHANGE_CLAIMS c 
+                JOIN EXCHANGE_BOARD b ON c.PostID = b.PostID 
+                WHERE c.ClaimID = ? AND b.GardenerID = ?
+            ");
+            $stmt->execute([$claimId, $user['id']]);
+            $postData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$postData) {
+                respond(['ok' => false, 'error' => 'Claim not found or access denied.'], 403);
+            }
+
+            // 2. If accepted, do the math to reduce the quantity
+            if ($status === 'Accepted') {
+                // Extract numbers from strings (e.g., pulls "2" from "2 pcs" and "5" from "5 pcs")
+                preg_match('/[0-9]+(\.[0-9]+)?/', $postData['QtyWanted'], $reqMatches);
+                preg_match('/[0-9]+(\.[0-9]+)?/', $postData['CurrentQty'], $availMatches);
+                
+                $reqNum = isset($reqMatches[0]) ? (float)$reqMatches[0] : 0;
+                $availNum = isset($availMatches[0]) ? (float)$availMatches[0] : 0;
+                
+                // Subtract to get new quantity, ensuring it doesn't drop below 0
+                $newNum = max(0, $availNum - $reqNum);
+                
+                // Inject the new number back into the original string format (e.g., "3 pcs")
+                $newQtyStr = preg_replace('/[0-9]+(\.[0-9]+)?/', $newNum, $postData['CurrentQty'], 1);
+
+                // Update the board's quantity
+                $updateBoard = $pdo->prepare("UPDATE EXCHANGE_BOARD SET Qty = ? WHERE PostID = ?");
+                $updateBoard->execute([$newQtyStr, $postData['PostID']]);
+
+                // Auto-close the post if quantity reaches 0
+                if ($newNum <= 0) {
+                    $pdo->prepare("UPDATE EXCHANGE_BOARD SET Status = 'Completed' WHERE PostID = ?")->execute([$postData['PostID']]);
+                }
+            }
+
+            // 3. Finally, update the claim's status
+            $stmt = $pdo->prepare("UPDATE EXCHANGE_CLAIMS SET Status = ? WHERE ClaimID = ?");
+            $stmt->execute([$status, $claimId]);
+            
+            respond(['ok' => true]);
+        }
         // ---------------- CUSTOMER: Resources ----------------
 
         case 'resources': {

@@ -33,7 +33,7 @@ html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  background: var(--cream-100);
+  background-color: beige; 
   color: var(--ink-900);
   font-family: var(--font-body);
   line-height: 1.55;

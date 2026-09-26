@@ -128,6 +128,26 @@ CREATE TABLE IF NOT EXISTS PERSONAL_INVENTORY (
 -- ---------------------------------------------------------
 -- Produce Exchange Board
 -- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS EXCHANGE_BOARD (
+    PostID INT AUTO_INCREMENT PRIMARY KEY,
+    GardenerID INT NOT NULL,
+    ProduceName VARCHAR(100) NOT NULL,
+    Qty VARCHAR(50) NOT NULL, -- e.g., "2 kg", "3 bundles"
+    Description TEXT,
+    Type ENUM('Offering', 'Seeking') DEFAULT 'Offering',
+    Status ENUM('Active', 'Completed') DEFAULT 'Active',
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS EXCHANGE_CLAIMS (
+    ClaimID INT AUTO_INCREMENT PRIMARY KEY,
+    PostID INT NOT NULL,
+    RequesterID INT NOT NULL,
+    QtyWanted VARCHAR(50) NOT NULL,
+    PickupDetails TEXT NOT NULL,
+    Status ENUM('Pending', 'Accepted', 'Rejected') DEFAULT 'Pending',
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE EXCHANGE_LISTING (
     ListingID  INT AUTO_INCREMENT PRIMARY KEY,
