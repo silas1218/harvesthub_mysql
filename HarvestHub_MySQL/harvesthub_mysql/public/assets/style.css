@@ -1209,7 +1209,17 @@ table.data-table {
 .inline-form .field-select,
 .inline-form .field-qty { flex-shrink: 0; }
 
-.scroll-y { max-height: 240px; overflow-y: auto; }
+.scroll-y {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+#plots-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
 
 .back-link {
   display: inline-block;

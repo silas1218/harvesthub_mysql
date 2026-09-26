@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS GARDEN_PLOTS (
     GardenerID INT NOT NULL,
     CropName VARCHAR(100) NOT NULL,
     PlantedDate DATE NOT NULL,
-    EstHarvestDate DATE NOT NULL,
+    EstHarvestDate DATE NULL,
     Status ENUM('Planted', 'Growing', 'Harvested', 'Failed') DEFAULT 'Planted',
     Notes TEXT,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP

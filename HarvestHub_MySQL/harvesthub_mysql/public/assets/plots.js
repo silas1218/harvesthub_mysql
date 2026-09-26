@@ -1,6 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
+    let activePlotCategory = 'All';
 
     async function loadPlots() {
+        const listEl = document.getElementById('plots-list');
+        if (listEl) {
+            listEl.innerHTML = '<p class="empty-state">Loading your garden plots...</p>';
+        }
+
         try {
             const res = await fetch('api.php', {
                 method: 'POST',
@@ -11,44 +17,48 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (!data.ok) return;
 
-            const listEl = document.getElementById('plots-list');
-
             if (data.plots.length === 0) {
                 listEl.innerHTML = '<p class="empty-state">You have not logged any crops yet.</p>';
                 return;
             }
 
-            listEl.innerHTML = data.plots.map(p => {
-                // Determine badge colors based on status
+            const categoryFilterEl = document.getElementById('plots-category-filter');
+            if (categoryFilterEl && !categoryFilterEl.value) {
+                categoryFilterEl.value = activePlotCategory;
+            }
+
+            const filteredPlots = data.plots.filter(plot => {
+                return activePlotCategory === 'All' || plot.Status === activePlotCategory;
+            });
+
+            if (filteredPlots.length === 0) {
+                listEl.innerHTML = '<p class="empty-state">No crops in this category yet.</p>';
+                return;
+            }
+
+            listEl.innerHTML = filteredPlots.map(p => {
                 let badgeClass = 'badge-neutral';
-                if (p.Status === 'Growing') badgeClass = 'badge-brown';
-                if (p.Status === 'Harvested') badgeClass = 'badge-brown'; // Update to a green class if you add one to CSS
-                if (p.Status === 'Failed') badgeClass = 'badge-neutral';
+                if (p.Status === 'Harvested') badgeClass = 'badge-brown';
 
                 return `
                 <div class="plot-item" data-search="${escapeHtml(p.CropName).toLowerCase()}" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid #e2e8f0;">
-                    
                     <div style="flex: 1; padding-right: 16px;">
                         <div style="margin-bottom: 4px;">
                             <strong style="font-size: 1.1rem;">${escapeHtml(p.CropName)}</strong>
                             <span class="badge ${badgeClass}" style="margin-left: 8px; font-size: 0.75rem;">${escapeHtml(p.Status)}</span>
                         </div>
                         <div style="font-size: 0.85rem; color: #475569; margin-bottom: 8px;">
-                            <strong>Planted:</strong> ${new Date(p.PlantedDate).toLocaleDateString()} &nbsp;|&nbsp; 
-                            <strong>Est. Harvest:</strong> ${new Date(p.EstHarvestDate).toLocaleDateString()}
+                            <strong>Planted:</strong> ${new Date(p.PlantedDate).toLocaleDateString()}
                         </div>
                         ${p.Notes ? `<p style="margin: 0; font-size: 0.85rem; color: #64748b; font-style: italic;">"${escapeHtml(p.Notes)}"</p>` : ''}
                     </div>
-                    
                     <div>
                         <select class="status-dropdown" data-id="${p.PlotID}" style="padding: 6px; border: 1px solid #e2e8f0; border-radius: 4px; background: #fff;">
                             <option value="Planted" ${p.Status === 'Planted' ? 'selected' : ''}>Planted</option>
-                            <option value="Growing" ${p.Status === 'Growing' ? 'selected' : ''}>Growing</option>
                             <option value="Harvested" ${p.Status === 'Harvested' ? 'selected' : ''}>Harvested</option>
                             <option value="Failed" ${p.Status === 'Failed' ? 'selected' : ''}>Failed</option>
                         </select>
                     </div>
-
                 </div>
                 `;
             }).join('');
@@ -106,12 +116,24 @@ document.addEventListener('DOMContentLoaded', () => {
         addForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = addForm.querySelector('button[type="submit"]');
-            btn.disabled = true;
-
-            const cropName = document.getElementById('plot-crop-name').value;
+            const cropName = document.getElementById('plot-crop-name').value.trim();
             const plantedDate = document.getElementById('plot-planted-date').value;
-            const harvestDate = document.getElementById('plot-harvest-date').value;
-            const notes = document.getElementById('plot-notes').value;
+            const notes = document.getElementById('plot-notes').value.trim();
+
+            if (!cropName || !plantedDate) {
+                if (typeof showToast === 'function') {
+                    showToast('Crop name and planted date are required.', 'error');
+                }
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Logging...';
+
+            const listEl = document.getElementById('plots-list');
+            if (listEl) {
+                listEl.innerHTML = '<p class="empty-state">Saving crop...</p>';
+            }
 
             try {
                 const res = await fetch('api.php', {
@@ -121,7 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         action: 'add_crop_log', 
                         crop_name: cropName, 
                         planted_date: plantedDate, 
-                        est_harvest_date: harvestDate, 
                         notes: notes 
                     })
                 });
@@ -130,14 +151,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result.ok) {
                     if (typeof showToast === 'function') showToast('Crop logged successfully!', 'success');
                     addForm.reset();
-                    loadPlots();
+                    await loadPlots();
                 } else {
                     if (typeof showToast === 'function') showToast(result.error || 'Failed to log crop.', 'error');
                 }
             } catch (err) {
                 console.error("Error logging crop:", err);
+                if (typeof showToast === 'function') showToast('Network error while saving crop.', 'error');
             } finally {
                 btn.disabled = false;
+                btn.textContent = 'Log Crop';
             }
         });
     }
@@ -151,6 +174,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const itemName = item.getAttribute('data-search');
                 item.style.display = itemName.includes(term) ? 'flex' : 'none';
             });
+        });
+    }
+
+    const categoryFilterEl = document.getElementById('plots-category-filter');
+    if (categoryFilterEl) {
+        categoryFilterEl.addEventListener('change', (e) => {
+            activePlotCategory = e.target.value;
+            loadPlots();
         });
     }
 

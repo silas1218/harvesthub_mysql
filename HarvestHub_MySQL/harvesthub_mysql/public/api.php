@@ -737,46 +737,21 @@ try {
             respond(['ok' => true]);
         }
 
-        // ---------------------------------------------------------
-        // Analytics Endpoints
-        // ---------------------------------------------------------
-
-        case 'get_analytics': {
-            $user = requireJsonRole('customer');
-            
-            // 1. KPI Stats
-            $activePosts = $pdo->query("SELECT COUNT(*) FROM EXCHANGE_BOARD WHERE Status = 'Active'")->fetchColumn();
-            $completedPosts = $pdo->query("SELECT COUNT(*) FROM EXCHANGE_BOARD WHERE Status = 'Completed'")->fetchColumn();
-            $totalClaims = $pdo->query("SELECT COUNT(*) FROM EXCHANGE_CLAIMS")->fetchColumn();
-
-            // 2. Chart Data: Top 5 most frequently posted produce items
-            $topProduce = $pdo->query("
-                SELECT ProduceName, COUNT(*) as TotalPosts 
-                FROM EXCHANGE_BOARD 
-                GROUP BY ProduceName 
-                ORDER BY TotalPosts DESC 
-                LIMIT 5
-            ")->fetchAll(PDO::FETCH_ASSOC);
-
-            respond([
-                'ok' => true,
-                'stats' => [
-                    'active_posts' => (int)$activePosts,
-                    'completed_exchanges' => (int)$completedPosts,
-                    'total_claims' => (int)$totalClaims
-                ],
-                'top_produce' => $topProduce
-            ]);
-        }
         // ---------------- STAFF ----------------
 
         case 'pending_applications': {
             requireJsonRole('staff');
             $rows = $pdo->query("
-                SELECT PA.AppID, G.Name AS GardenerName, P.Label, PA.AppliedAt, PA.RequestType
+                SELECT PA.AppID,
+                       G.Name AS GardenerName,
+                       COALESCE(CP.PlotName, P.Label) AS Label,
+                       COALESCE(CP.Status, P.Status) AS PlotStatus,
+                       PA.AppliedAt,
+                       PA.RequestType
                 FROM PLOT_APPLICATION PA
                 JOIN COMMUNITY_GARDENER G ON G.GardenerID = PA.GardenerID
                 JOIN PLOT P ON P.PltID = PA.PltID
+                LEFT JOIN COMMUNITY_PLOTS CP ON LOWER(CP.PlotName) = LOWER(P.Label)
                 WHERE PA.Status = 'Pending' ORDER BY PA.AppliedAt ASC
             ")->fetchAll(PDO::FETCH_ASSOC);
             respond(['ok' => true, 'applications' => $rows]);
@@ -799,13 +774,30 @@ try {
             $pdo->prepare("UPDATE PLOT_APPLICATION SET Status = ?, CoordID = ? WHERE AppID = ?")
                 ->execute([$newStatus, $user['id'], (int) $appId]);
 
+            $plotLabel = $pdo->prepare("SELECT Label FROM PLOT WHERE PltID = ?");
+            $plotLabel->execute([$row['PltID']]);
+            $plotName = $plotLabel->fetchColumn();
+
             if ($decision === 'approve') {
                 if ($row['RequestType'] === 'Unassign') {
                     $pdo->prepare("UPDATE PLOT SET GardenerID = NULL, Status = 'Available' WHERE PltID = ? AND GardenerID = ?")
                         ->execute([$row['PltID'], $row['GardenerID']]);
+                    if ($plotName) {
+                        $pdo->prepare("UPDATE community_plots SET Status = 'Available', OccupantID = NULL WHERE PlotName = ?")
+                            ->execute([$plotName]);
+                    }
                 } else {
                     $pdo->prepare("UPDATE PLOT SET GardenerID = ?, Status = 'Occupied' WHERE PltID = ?")
                         ->execute([$row['GardenerID'], $row['PltID']]);
+                    if ($plotName) {
+                        $pdo->prepare("UPDATE community_plots SET Status = 'Occupied', OccupantID = ? WHERE PlotName = ?")
+                            ->execute([$row['GardenerID'], $plotName]);
+                    }
+                }
+            } else {
+                if ($plotName) {
+                    $pdo->prepare("UPDATE community_plots SET Status = 'Available', OccupantID = NULL WHERE PlotName = ?")
+                        ->execute([$plotName]);
                 }
             }
             respond(['ok' => true]);
@@ -902,9 +894,14 @@ try {
         case 'all_plots': {
             requireJsonRole('staff');
             $rows = $pdo->query("
-                SELECT P.PltID, P.Label, P.Status, G.Name AS GardenerName
-                FROM PLOT P LEFT JOIN COMMUNITY_GARDENER G ON G.GardenerID = P.GardenerID
-                ORDER BY P.Label
+                SELECT P.PltID,
+                       COALESCE(CP.PlotName, P.Label) AS Label,
+                       COALESCE(CP.Status, P.Status) AS Status,
+                       G.Name AS GardenerName
+                FROM PLOT P
+                LEFT JOIN COMMUNITY_GARDENER G ON G.GardenerID = P.GardenerID
+                LEFT JOIN COMMUNITY_PLOTS CP ON LOWER(CP.PlotName) = LOWER(P.Label)
+                ORDER BY COALESCE(CP.PlotName, P.Label)
             ")->fetchAll(PDO::FETCH_ASSOC);
             respond(['ok' => true, 'plots' => $rows]);
         }
@@ -940,15 +937,15 @@ try {
             $user = requireJsonRole('customer');
             $crop = trim($_POST['crop_name'] ?? '');
             $planted = $_POST['planted_date'] ?? '';
-            $harvest = $_POST['est_harvest_date'] ?? '';
             $notes = trim($_POST['notes'] ?? '');
+            $harvest = $_POST['est_harvest_date'] ?? null;
 
-            if (empty($crop) || empty($planted) || empty($harvest)) {
-                respond(['ok' => false, 'error' => 'Crop name and dates are required.'], 422);
+            if (empty($crop) || empty($planted)) {
+                respond(['ok' => false, 'error' => 'Crop name and planted date are required.'], 422);
             }
 
             $stmt = $pdo->prepare("INSERT INTO GARDEN_PLOTS (GardenerID, CropName, PlantedDate, EstHarvestDate, Notes) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$user['id'], $crop, $planted, $harvest, $notes]);
+            $stmt->execute([$user['id'], $crop, $planted, $harvest === '' ? null : $harvest, $notes]);
             respond(['ok' => true]);
         }
 
@@ -986,8 +983,7 @@ try {
             $user = requireJsonRole('customer');
             $plotId = (int)($_POST['plot_id'] ?? 0);
 
-            // Switched to lowercase table name
-            $check = $pdo->prepare("SELECT Status FROM community_plots WHERE PlotID = ?");
+            $check = $pdo->prepare("SELECT PlotID, PlotName, Status FROM community_plots WHERE PlotID = ?");
             $check->execute([$plotId]);
             $plot = $check->fetch(PDO::FETCH_ASSOC);
 
@@ -995,12 +991,29 @@ try {
                 respond(['ok' => false, 'error' => 'This plot is no longer available.']);
             }
 
-            // Switched to lowercase table name
-            $stmt = $pdo->prepare("UPDATE community_plots SET Status = 'Pending Approval', OccupantID = ? WHERE PlotID = ?");
-            $stmt->execute([$user['id'], $plotId]);
+            $linkedPlot = $pdo->prepare("SELECT PltID, Label FROM PLOT WHERE LOWER(Label) = LOWER(?) LIMIT 1");
+            $linkedPlot->execute([$plot['PlotName']]);
+            $linked = $linkedPlot->fetch(PDO::FETCH_ASSOC);
+
+            if (!$linked) {
+                respond(['ok' => false, 'error' => 'No matching plot record was found for coordinator approval.'], 409);
+            }
+
+            $existing = $pdo->prepare("SELECT 1 FROM PLOT_APPLICATION WHERE GardenerID = ? AND PltID = ? AND Status = 'Pending' LIMIT 1");
+            $existing->execute([$user['id'], $linked['PltID']]);
+            if ($existing->fetchColumn()) {
+                respond(['ok' => false, 'error' => 'You already have a pending request for this plot.'], 409);
+            }
+
+            $pdo->prepare("INSERT INTO PLOT_APPLICATION (GardenerID, PltID, Status, RequestType) VALUES (?, ?, 'Pending', 'Apply')")
+                ->execute([$user['id'], $linked['PltID']]);
+
+            $pdo->prepare("UPDATE community_plots SET Status = 'Pending Approval', OccupantID = ? WHERE PlotID = ?")
+                ->execute([$user['id'], $plotId]);
+
             respond(['ok' => true]);
             break;
-        }   
+        }
 
         // ---------------- ADMIN ----------------
 

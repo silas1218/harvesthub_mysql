@@ -20,9 +20,6 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     <a href="customer_exchange.php" class="sidebar-link <?= $currentPage === 'customer_exchange.php' ? 'active' : '' ?>">
       Exchange Board
     </a>
-    <a href="customer_analytics.php" class="sidebar-link <?= $currentPage === 'customer_analytics.php' ? 'active' : '' ?>">
-      Analytics
-    </a>
   </nav>
 
   <div class="sidebar-footer">

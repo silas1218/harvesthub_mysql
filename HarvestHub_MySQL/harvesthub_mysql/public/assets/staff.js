@@ -36,7 +36,9 @@ function renderApplications() {
         <div class="action-row-title">${escapeHtml(app.GardenerName)}</div>
         <div class="action-row-sub">${app.RequestType === 'Unassign'
           ? `Requesting for plot "${escapeHtml(app.Label)}" to be unassigned`
-          : `Requesting ${escapeHtml(app.Label)}`}</div>
+          : `Requesting ${escapeHtml(app.Label)}`}
+          <span class="text-muted"> • ${escapeHtml(app.PlotStatus || 'Pending')}</span>
+        </div>
       </div>
       <div class="action-row-actions">
         <button class="btn btn-accent btn-sm approve-app" data-id="${app.AppID}">Approve</button>

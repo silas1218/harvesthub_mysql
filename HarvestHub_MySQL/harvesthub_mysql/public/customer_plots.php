@@ -35,11 +35,19 @@ $navTitle = 'My Plots & Crops';
                 <p class="text-muted" style="margin: 0;">Track your planted crops and estimate harvest timelines.</p>
               </div>
               
-              <input type="search" id="search-plots" placeholder="Search crops..." style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 4px; width: 220px;">
+              <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <select id="plots-category-filter" style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 4px; background: #fff; min-width: 150px;">
+                  <option value="All">All Categories</option>
+                  <option value="Planted">Planted</option>
+                  <option value="Harvested">Harvested</option>
+                  <option value="Failed">Failed</option>
+                </select>
+                <input type="search" id="search-plots" placeholder="Search crops..." style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 4px; width: 220px;">
+              </div>
             </div>
 
             <div class="panel" style="padding: 0 24px;">
-              <div id="plots-list" class="scroll-y" aria-live="polite" style="max-height: 600px;">
+              <div id="plots-list" class="scroll-y" aria-live="polite" style="max-height: 420px; min-height: 180px;">
                   <p class="empty-state">Loading your garden plots...</p>
               </div>
             </div>
@@ -53,7 +61,7 @@ $navTitle = 'My Plots & Crops';
             </div>
             
             <!-- Map Grid -->
-            <div id="garden-map-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; background: #f8fafc; padding: 32px; border-radius: 8px; border: 2px dashed #cbd5e1; min-height: 250px;">
+            <div id="garden-map-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; background: #f8fafc; padding: 32px; border-radius: 8px; border: 2px dashed #cbd5e1; min-height: 250px; max-height: 420px;">
                 <p class="text-muted" style="grid-column: span 4; text-align: center;">Loading map...</p>
             </div>
             
@@ -86,11 +94,6 @@ $navTitle = 'My Plots & Crops';
                 <input type="date" id="plot-planted-date" style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 4px;" required>
               </div>
               
-              <div>
-                <label style="display: block; margin-bottom: 4px; font-size: 0.85rem; color: #475569; font-weight: 500;">Est. Harvest Date</label>
-                <input type="date" id="plot-harvest-date" style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 4px;" required>
-              </div>
-
               <div>
                 <label style="display: block; margin-bottom: 4px; font-size: 0.85rem; color: #475569; font-weight: 500;">Notes (Optional)</label>
                 <textarea id="plot-notes" placeholder="e.g., Used organic compost" rows="2" style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 4px; resize: none;"></textarea>
