@@ -20,7 +20,15 @@ function filterTableByName(inputId, tableId) {
   const query = input.value.trim().toLowerCase();
 
   table.querySelectorAll('tr[data-name]').forEach(row => {
-    row.hidden = query !== '' && !row.textContent.toLowerCase().includes(query);
+    // Name is stored in the data attribute
+    const name = row.dataset.name ? row.dataset.name.toLowerCase() : '';
+    
+    // Email is uniformly located in the second column (td:nth-child(2)) across all our tables
+    const emailCell = row.querySelector('td:nth-child(2)');
+    const email = emailCell ? emailCell.textContent.toLowerCase() : '';
+    
+    // Hide row if the query is not empty AND it matches neither Name nor Email
+    row.hidden = query !== '' && !name.includes(query) && !email.includes(query);
   });
 }
 
@@ -33,6 +41,7 @@ async function loadStats() {
   if (!data.ok) return;
 
   const cards = [
+    ['Administrators', data.stats.admins],
     ['Gardeners', data.stats.gardeners],
     ['Coordinators', data.stats.coordinators],
     ['Plots Occupied', data.stats.plots_occupied],
@@ -53,35 +62,54 @@ async function loadStats() {
 }
 
 async function loadAccounts() {
-  const gardenersTable = document.getElementById('gardeners-table');
-  if (!gardenersTable) return;
-
   const res = await fetch('api.php?action=accounts');
   const data = await res.json();
   if (!data.ok) return;
 
-  gardenersTable.innerHTML = data.gardeners.map(g => `
-    <tr data-name="${escapeHtml(g.Name)}" data-location="${escapeHtml(g.Location || '')}">
-      <td>${escapeHtml(g.Name)}</td>
-      <td>${escapeHtml(g.Email)}</td>
-      <td>${escapeHtml(g.Location || 'Not provided')}</td>
-      <td class="text-right">
-        <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="gardener" data-id="${g.id}" data-name="${escapeHtml(g.Name)}">Archive</button>
-      </td>
-    </tr>
-  `).join('') || '<tr><td colspan="4" class="text-muted">No gardeners yet.</td></tr>';
+  // Render Gardeners if table exists
+  const gardenersTable = document.getElementById('gardeners-table');
+  if (gardenersTable) {
+    gardenersTable.innerHTML = data.gardeners.map(g => `
+      <tr data-name="${escapeHtml(g.Name)}" data-location="${escapeHtml(g.Location || '')}">
+        <td>${escapeHtml(g.Name)}</td>
+        <td>${escapeHtml(g.Email)}</td>
+        <td>${escapeHtml(g.Location || 'Not provided')}</td>
+        <td>
+          <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="gardener" data-id="${g.id}" data-name="${escapeHtml(g.Name)}">Archive</button>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" class="text-muted">No gardeners yet.</td></tr>';
+  }
 
-  document.getElementById('coordinators-table').innerHTML = data.coordinators.map(c => `
-    <tr data-name="${escapeHtml(c.Name)}" data-location="${escapeHtml(c.Location || '')}">
-      <td>${escapeHtml(c.Name)}</td>
-      <td>${escapeHtml(c.Email)}</td>
-      <td>${escapeHtml(c.Shift)}</td>
-      <td>${escapeHtml(c.Location || 'Not provided')}</td>
-      <td class="text-right">
-        <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="coordinator" data-id="${c.id}" data-name="${escapeHtml(c.Name)}">Archive</button>
-      </td>
-    </tr>
-  `).join('') || '<tr><td colspan="5" class="text-muted">No coordinators yet.</td></tr>';
+  // Render Coordinators if table exists
+  const coordsTable = document.getElementById('coordinators-table');
+  if (coordsTable) {
+    coordsTable.innerHTML = data.coordinators.map(c => `
+      <tr data-name="${escapeHtml(c.Name)}" data-location="${escapeHtml(c.Location || '')}">
+        <td>${escapeHtml(c.Name)}</td>
+        <td>${escapeHtml(c.Email)}</td>
+        <td>${escapeHtml(c.Shift)}</td>
+        <td>${escapeHtml(c.Location || 'Not provided')}</td>
+        <td>
+          <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="coordinator" data-id="${c.id}" data-name="${escapeHtml(c.Name)}">Archive</button>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" class="text-muted">No coordinators yet.</td></tr>';
+  }
+
+  // Render Admins if table exists
+  const adminsTable = document.getElementById('admins-table');
+  if (adminsTable) {
+    adminsTable.innerHTML = data.admins.map(a => `
+      <tr data-name="${escapeHtml(a.Name)}">
+        <td>${escapeHtml(a.Name)}</td>
+        <td>${escapeHtml(a.Email)}</td>
+        <td>
+          <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="admin" data-id="${a.id}" data-name="${escapeHtml(a.Name)}" ${a.id === data.current_user_id ? 'disabled title="You cannot archive yourself"' : ''}>Archive</button>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="3" class="text-muted">No administrators yet.</td></tr>';
+  }
 
   document.querySelectorAll('.delete-btn').forEach(btn => {
     btn.onclick = () => {
@@ -90,53 +118,115 @@ async function loadAccounts() {
   });
 }
 
+async function loadArchivedAccounts() {
+  const table = document.getElementById('archived-table');
+  if (!table) return; // Only run on the archived page
+
+  const res = await fetch('api.php?action=archived_accounts');
+  const data = await res.json();
+  
+  if (!data.ok || data.accounts.length === 0) {
+    table.innerHTML = '<tr><td colspan="6" class="text-muted">No archived accounts found.</td></tr>';
+    return;
+  }
+
+  table.innerHTML = data.accounts.map(a => {
+    const displayRole = a.Role === 'Customer' ? 'Gardener' : a.Role;
+    return `
+      <tr data-name="${escapeHtml(a.Name)}">
+        <td>${escapeHtml(a.Name)}</td>
+        <td>${escapeHtml(a.Email)}</td>
+        <td>${escapeHtml(displayRole)}</td>
+        <td>${escapeHtml(a.Location)}</td>
+        <td>${escapeHtml(a.Shift)}</td>
+        <td>
+          <button type="button" class="btn btn-accent btn-sm unarchive-btn" data-role="${a.Role}" data-id="${a.id}">Unarchive</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Re-apply any active search filter immediately after table loads
+  const searchInput = document.getElementById('search-archived');
+  if (searchInput && searchInput.value) {
+    filterTableByName('search-archived', 'archived-table');
+  }
+
+  document.querySelectorAll('.unarchive-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const res = await fetch('api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ action: 'unarchive_account', role: btn.dataset.role, id: btn.dataset.id })
+      });
+      const result = await res.json();
+      if (result.ok) {
+        showToast('Account successfully unarchived and restored.', 'success');
+        loadArchivedAccounts();
+      } else {
+        showToast(result.error || 'Failed to unarchive.', 'danger');
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
 // ---------- Pending Account Requests ----------
 
 async function loadSignupRequests() {
-  const tbody = document.getElementById('signups-list');
-  if (!tbody) return;
+  const gardenersTable = document.getElementById('pending-gardeners-table');
+  const coordsTable = document.getElementById('pending-coordinators-table');
+  
+  // If neither table is on the page, don't fetch data
+  if (!gardenersTable && !coordsTable) return;
 
   const res = await fetch('api.php?action=pending_signups');
   const data = await res.json();
   if (!data.ok) return;
 
-  const emptyEl = document.getElementById('signups-empty');
-
-  if (data.requests.length === 0) {
-    tbody.innerHTML = '';
-    emptyEl.hidden = false;
-    return;
-  }
-  emptyEl.hidden = true;
-
-  tbody.innerHTML = `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Age</th><th>Location</th><th>Shift</th><th></th></tr></thead>
-        <tbody id="pending-signups-table">
-          ${data.requests.map(r => `
-            <tr data-name="${escapeHtml(r.FirstName + ' ' + r.LastName)}" data-location="${escapeHtml(r.Location || '')}">
-              <td>${escapeHtml(r.FirstName + ' ' + r.LastName)}</td>
-              <td>${escapeHtml(r.Email)}</td>
-              <td>${r.Role === 'staff' ? 'Coordinator' : 'Gardener'}</td>
-              <td>${escapeHtml(String(r.Age))}</td>
-              <td>${escapeHtml(r.Location)}</td>
-              <td>${r.Role === 'staff' ? escapeHtml(r.Shift || 'Morning') : '<span class="text-muted">—</span>'}</td>
-              <td class="text-right" style="white-space: nowrap;">
-                <button class="btn btn-sm approve-signup" style="background: var(--green-700); color: var(--white);" data-id="${r.RequestID}">Approve</button>
-                <button class="btn btn-sm reject-signup" style="background: var(--danger); color: var(--white);" data-id="${r.RequestID}">Reject</button>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
+  const renderRow = (r) => `
+    <tr data-name="${escapeHtml(r.FirstName + ' ' + r.LastName)}" data-location="${escapeHtml(r.Location || '')}">
+      <td>${escapeHtml(r.FirstName + ' ' + r.LastName)}</td>
+      <td>${escapeHtml(r.Email)}</td>
+      <td>${escapeHtml(String(r.Age))}</td>
+      <td>${escapeHtml(r.Location)}</td>
+      ${r.Role === 'staff' ? `<td>${escapeHtml(r.Shift || 'Morning')}</td>` : ''}
+      <td class="text-right" style="white-space: nowrap;">
+        <button class="btn btn-sm approve-signup" style="background: var(--green-700); color: var(--white);" data-id="${r.RequestID}">Approve</button>
+        <button class="btn btn-sm reject-signup" style="background: var(--danger); color: var(--white);" data-id="${r.RequestID}">Reject</button>
+      </td>
+    </tr>
   `;
 
-  tbody.querySelectorAll('.approve-signup').forEach(btn => {
+  if (gardenersTable) {
+    const gardeners = data.requests.filter(r => r.Role !== 'staff');
+    const emptyEl = document.getElementById('pending-gardeners-empty');
+    if (gardeners.length === 0) {
+      gardenersTable.innerHTML = '';
+      if (emptyEl) emptyEl.hidden = false;
+    } else {
+      if (emptyEl) emptyEl.hidden = true;
+      gardenersTable.innerHTML = gardeners.map(renderRow).join('');
+    }
+  }
+
+  if (coordsTable) {
+    const coords = data.requests.filter(r => r.Role === 'staff');
+    const emptyEl = document.getElementById('pending-coordinators-empty');
+    if (coords.length === 0) {
+      coordsTable.innerHTML = '';
+      if (emptyEl) emptyEl.hidden = false;
+    } else {
+      if (emptyEl) emptyEl.hidden = true;
+      coordsTable.innerHTML = coords.map(renderRow).join('');
+    }
+  }
+
+  document.querySelectorAll('.approve-signup').forEach(btn => {
     btn.addEventListener('click', () => processSignup(btn.dataset.id, 'approve'));
   });
-  tbody.querySelectorAll('.reject-signup').forEach(btn => {
+  document.querySelectorAll('.reject-signup').forEach(btn => {
     btn.addEventListener('click', () => processSignup(btn.dataset.id, 'reject'));
   });
 }
@@ -208,6 +298,7 @@ if (deleteConfirmBtn) {
 }
 
 // ---------- Archived Accounts Logic ----------
+// ---------- Archived Accounts Logic ----------
 async function loadArchivedAccounts() {
   const table = document.getElementById('archived-table');
   if (!table) return; // Only run on the archived page
@@ -220,18 +311,27 @@ async function loadArchivedAccounts() {
     return;
   }
 
-  table.innerHTML = data.accounts.map(a => `
-    <tr>
-      <td>${escapeHtml(a.Name)}</td>
-      <td>${escapeHtml(a.Email)}</td>
-      <td><span class="badge badge-neutral">${escapeHtml(a.Role)}</span></td>
-      <td>${escapeHtml(a.Location)}</td>
-      <td>${escapeHtml(a.Shift)}</td>
-      <td class="text-right">
-        <button type="button" class="btn btn-accent btn-sm unarchive-btn" data-role="${a.Role}" data-id="${a.id}">Unarchive</button>
-      </td>
-    </tr>
-  `).join('');
+  table.innerHTML = data.accounts.map(a => {
+    const displayRole = a.Role === 'Customer' ? 'Gardener' : a.Role;
+    return `
+      <tr data-name="${escapeHtml(a.Name)}">
+        <td>${escapeHtml(a.Name)}</td>
+        <td>${escapeHtml(a.Email)}</td>
+        <td>${escapeHtml(displayRole)}</td>
+        <td>${escapeHtml(a.Location)}</td>
+        <td>${escapeHtml(a.Shift)}</td>
+        <td>
+          <button type="button" class="btn btn-accent btn-sm unarchive-btn" data-role="${a.Role}" data-id="${a.id}">Unarchive</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Re-apply any active search filter immediately after table loads
+  const searchInput = document.getElementById('search-archived');
+  if (searchInput && searchInput.value) {
+    filterTableByName('search-archived', 'archived-table');
+  }
 
   document.querySelectorAll('.unarchive-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -252,6 +352,56 @@ async function loadArchivedAccounts() {
     });
   });
 }
+
+// Clean table sorting helper using direct element reference
+function sortTable(columnIndex, headerEl) {
+  const table = document.getElementById("archived-data-table");
+  if (!table) return;
+  
+  const tbody = document.getElementById("archived-table");
+  if (!tbody) return;
+
+  const headers = table.querySelectorAll("th");
+  const cleanTexts = ["Name", "Email", "Role", "Location", "Shift"];
+  
+  // Reset all headers to clean text without arrows
+  headers.forEach((th, idx) => {
+    if (idx < 5) {
+      th.innerHTML = `${cleanTexts[idx]} <span id="sort-icon-${idx}"></span>`;
+    }
+  });
+
+  // Determine sort direction (toggle if clicking the same column, default to asc)
+  let currentDir = table.dataset.sortDir === "asc" && table.dataset.sortCol == columnIndex ? "desc" : "asc";
+  table.dataset.sortDir = currentDir;
+  table.dataset.sortCol = columnIndex;
+
+  // Render the arrow inside the specific column's span instantly
+  const activeIcon = document.getElementById(`sort-icon-${columnIndex}`);
+  if (activeIcon) {
+    activeIcon.textContent = currentDir === "asc" ? "▴" : "▾";
+  }
+
+  // Grab all table rows (excluding header)
+  const rowsArray = Array.from(tbody.querySelectorAll("tr"));
+
+  // Check if we have valid data rows (ignore empty/loading state rows)
+  if (rowsArray.length <= 1 && rowsArray[0]?.querySelector('.text-muted')) return;
+
+  // Sort rows cleanly using modern array sorting
+  rowsArray.sort((rowA, rowB) => {
+    const cellA = rowA.getElementsByTagName("TD")[columnIndex]?.textContent.trim().toLowerCase() || "";
+    const cellB = rowB.getElementsByTagName("TD")[columnIndex]?.textContent.trim().toLowerCase() || "";
+
+    if (cellA < cellB) return currentDir === "asc" ? -1 : 1;
+    if (cellA > cellB) return currentDir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  // Re-append sorted rows to the table body in one smooth operation
+  rowsArray.forEach(row => tbody.appendChild(row));
+}
+
 
 // ---------- Chart.js Graph & Report Export Logic ----------
 async function renderActivityGraph() {
@@ -312,6 +462,14 @@ document.addEventListener('DOMContentLoaded', () => {
     createAdminForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
+      const password = document.getElementById('new-admin-pass').value;
+      const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}$/;
+
+      if (!passwordRegex.test(password)) {
+        showToast('Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.', 'danger');
+        return;
+      }
+
       const submitBtn = createAdminForm.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
 
@@ -322,13 +480,16 @@ document.addEventListener('DOMContentLoaded', () => {
           action: 'create_admin',
           name: document.getElementById('new-admin-name').value,
           email: document.getElementById('new-admin-email').value,
-          password: document.getElementById('new-admin-pass').value
+          age: document.getElementById('new-admin-age').value,
+          location: document.getElementById('new-admin-location').value,
+          password: password
         })
       });
       const data = await res.json();
       if (data.ok) {
         showToast('Administrator account created successfully!', 'success');
         createAdminForm.reset();
+        loadAccounts();
       } else {
         showToast(data.error || 'Failed to create account.', 'danger');
       }

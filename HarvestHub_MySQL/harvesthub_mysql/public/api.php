@@ -1074,8 +1074,9 @@ try {
             requireJsonRole('admin');
             $count = fn($sql) => (int) $pdo->query($sql)->fetchColumn();
             respond(['ok' => true, 'stats' => [
-                'gardeners' => $count("SELECT COUNT(*) FROM COMMUNITY_GARDENER"),
-                'coordinators' => $count("SELECT COUNT(*) FROM GARDEN_COORDINATOR"),
+                'admins' => $count("SELECT COUNT(*) FROM SYSTEM_ADMINISTRATOR WHERE Status = 'Active'"),
+                'gardeners' => $count("SELECT COUNT(*) FROM COMMUNITY_GARDENER WHERE Status = 'Active'"),
+                'coordinators' => $count("SELECT COUNT(*) FROM GARDEN_COORDINATOR WHERE Status = 'Active'"),
                 'plots_occupied' => $count("SELECT COUNT(*) FROM PLOT WHERE Status = 'Occupied'"),
                 'plots_available' => $count("SELECT COUNT(*) FROM PLOT WHERE Status = 'Available'"),
                 'pending_applications' => $count("SELECT COUNT(*) FROM PLOT_APPLICATION WHERE Status = 'Pending'"),
@@ -1087,10 +1088,12 @@ try {
         }
 
         case 'accounts': {
-            requireJsonRole('admin');
+            $user = requireJsonRole('admin');
             $gardeners = $pdo->query("SELECT GardenerID AS id, Name, Email, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location FROM COMMUNITY_GARDENER WHERE Status = 'Active' ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
             $coordinators = $pdo->query("SELECT CoordID AS id, Name, Email, Shift, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location FROM GARDEN_COORDINATOR WHERE Status = 'Active' ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
-            respond(['ok' => true, 'gardeners' => $gardeners, 'coordinators' => $coordinators]);
+            $admins = $pdo->query("SELECT AdminID AS id, Name, Email FROM SYSTEM_ADMINISTRATOR WHERE Status = 'Active' ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
+            
+            respond(['ok' => true, 'current_user_id' => $user['id'], 'gardeners' => $gardeners, 'coordinators' => $coordinators, 'admins' => $admins]);
         }
 
         case 'pending_signups': {
@@ -1173,35 +1176,57 @@ try {
             requireJsonRole('admin');
             $name = trim($_POST['name'] ?? '');
             $email = trim($_POST['email'] ?? '');
+            $age = $_POST['age'] ?? '';
+            $location = trim($_POST['location'] ?? '');
             $password = $_POST['password'] ?? '';
 
-            if (empty($name) || empty($email) || strlen($password) < 8) {
-                respond(['ok' => false, 'error' => 'Name, valid email, and 8+ char password required.'], 422);
+            $errors = [];
+            if (empty($name)) $errors[] = 'Name is required.';
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Valid email required.';
+            if (!ctype_digit((string)$age) || (int)$age < 18 || (int)$age > 120) $errors[] = 'Age must be between 18 and 120.';
+            if (!in_array($location, NCR_CITIES, true)) $errors[] = 'Please select a valid NCR city.';
+            if (!preg_match('/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}$/', $password)) {
+                $errors[] = 'Password must be 8+ chars with an uppercase, lowercase, number, and special character.';
             }
 
+            if ($errors) respond(['ok' => false, 'error' => implode(' ', $errors)], 422);
+
             try {
-                $pdo->prepare("INSERT INTO SYSTEM_ADMINISTRATOR (Name, Email, PasswordHash, Status) VALUES (?, ?, ?, 'Active')")
-                    ->execute([htmlspecialchars($name, ENT_QUOTES, 'UTF-8'), $email, password_hash($password, PASSWORD_BCRYPT)]);
+                $pdo->prepare("INSERT INTO SYSTEM_ADMINISTRATOR (Name, Email, PasswordHash, Age, Location, Status) VALUES (?, ?, ?, ?, ?, 'Active')")
+                    ->execute([
+                        htmlspecialchars($name, ENT_QUOTES, 'UTF-8'), 
+                        $email, 
+                        password_hash($password, PASSWORD_BCRYPT),
+                        (int)$age,
+                        htmlspecialchars($location, ENT_QUOTES, 'UTF-8')
+                    ]);
                 respond(['ok' => true]);
             } catch (PDOException $e) {
                 respond(['ok' => false, 'error' => 'That email is already in use.'], 409);
             }
         }
-
+        
         case 'archive_account': {
-            requireJsonRole('admin');
+            $user = requireJsonRole('admin');
             $table = $_POST['table'] ?? '';
             $id = $_POST['id'] ?? '';
-            $map = ['gardener' => ['COMMUNITY_GARDENER', 'GardenerID'], 'coordinator' => ['GARDEN_COORDINATOR', 'CoordID']];
+            $map = [
+                'gardener' => ['COMMUNITY_GARDENER', 'GardenerID'], 
+                'coordinator' => ['GARDEN_COORDINATOR', 'CoordID'],
+                'admin' => ['SYSTEM_ADMINISTRATOR', 'AdminID']
+            ];
             if (!isset($map[$table]) || !ctype_digit((string) $id)) respond(['ok' => false, 'error' => 'Invalid request.'], 422);
 
             $idNum = (int) $id;
-            [$tbl, $col] = $map[$table];
+            
+            // Prevent an admin from archiving themselves
+            if ($table === 'admin' && $idNum === $user['id']) {
+                respond(['ok' => false, 'error' => 'You cannot archive your own account.'], 403);
+            }
 
-            // Archive the account instead of deleting it
+            [$tbl, $col] = $map[$table];
             $pdo->prepare("UPDATE $tbl SET Status = 'Archived' WHERE $col = ?")->execute([$idNum]);
             
-            // If it's a gardener, unassign their plot so the community can use it again
             if ($table === 'gardener') {
                 $pdo->prepare("UPDATE PLOT SET GardenerID = NULL, Status = 'Available' WHERE GardenerID = ?")->execute([$idNum]);
             }
