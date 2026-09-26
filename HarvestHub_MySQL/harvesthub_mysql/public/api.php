@@ -736,6 +736,38 @@ try {
             $stmt->execute([$itemId, $user['id']]);
             respond(['ok' => true]);
         }
+
+        // ---------------------------------------------------------
+        // Analytics Endpoints
+        // ---------------------------------------------------------
+
+        case 'get_analytics': {
+            $user = requireJsonRole('customer');
+            
+            // 1. KPI Stats
+            $activePosts = $pdo->query("SELECT COUNT(*) FROM EXCHANGE_BOARD WHERE Status = 'Active'")->fetchColumn();
+            $completedPosts = $pdo->query("SELECT COUNT(*) FROM EXCHANGE_BOARD WHERE Status = 'Completed'")->fetchColumn();
+            $totalClaims = $pdo->query("SELECT COUNT(*) FROM EXCHANGE_CLAIMS")->fetchColumn();
+
+            // 2. Chart Data: Top 5 most frequently posted produce items
+            $topProduce = $pdo->query("
+                SELECT ProduceName, COUNT(*) as TotalPosts 
+                FROM EXCHANGE_BOARD 
+                GROUP BY ProduceName 
+                ORDER BY TotalPosts DESC 
+                LIMIT 5
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            respond([
+                'ok' => true,
+                'stats' => [
+                    'active_posts' => (int)$activePosts,
+                    'completed_exchanges' => (int)$completedPosts,
+                    'total_claims' => (int)$totalClaims
+                ],
+                'top_produce' => $topProduce
+            ]);
+        }
         // ---------------- STAFF ----------------
 
         case 'pending_applications': {
@@ -892,6 +924,83 @@ try {
                 ->fetchAll(PDO::FETCH_ASSOC);
             respond(['ok' => true, 'resources' => $rows]);
         }
+
+            // ---------------------------------------------------------
+        // Plots & Crops Endpoints
+        // ---------------------------------------------------------
+
+        case 'get_my_plots': {
+            $user = requireJsonRole('customer');
+            $stmt = $pdo->prepare("SELECT * FROM GARDEN_PLOTS WHERE GardenerID = ? ORDER BY PlantedDate DESC");
+            $stmt->execute([$user['id']]);
+            respond(['ok' => true, 'plots' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        }
+
+        case 'add_crop_log': {
+            $user = requireJsonRole('customer');
+            $crop = trim($_POST['crop_name'] ?? '');
+            $planted = $_POST['planted_date'] ?? '';
+            $harvest = $_POST['est_harvest_date'] ?? '';
+            $notes = trim($_POST['notes'] ?? '');
+
+            if (empty($crop) || empty($planted) || empty($harvest)) {
+                respond(['ok' => false, 'error' => 'Crop name and dates are required.'], 422);
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO GARDEN_PLOTS (GardenerID, CropName, PlantedDate, EstHarvestDate, Notes) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$user['id'], $crop, $planted, $harvest, $notes]);
+            respond(['ok' => true]);
+        }
+
+        case 'update_crop_status': {
+            $user = requireJsonRole('customer');
+            $plotId = (int)($_POST['plot_id'] ?? 0);
+            $status = $_POST['status'] ?? '';
+
+            if (!in_array($status, ['Planted', 'Growing', 'Harvested', 'Failed'])) {
+                respond(['ok' => false, 'error' => 'Invalid status.'], 422);
+            }
+
+            $stmt = $pdo->prepare("UPDATE GARDEN_PLOTS SET Status = ? WHERE PlotID = ? AND GardenerID = ?");
+            $stmt->execute([$status, $plotId, $user['id']]);
+            respond(['ok' => true]);
+        }
+
+        // ---------------------------------------------------------
+        // Community Map Endpoints
+        // ---------------------------------------------------------
+
+        case 'get_community_map': {
+            // Added the missing role validation to prevent access crashes
+            $user = requireJsonRole('customer'); 
+            
+            // Switched to lowercase table name to perfectly match your phpMyAdmin
+            $stmt = $pdo->query("SELECT PlotID, PlotName, Status, OccupantID FROM community_plots ORDER BY PlotName ASC");
+            $plots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            respond(['ok' => true, 'plots' => $plots]);
+            break;
+        }
+
+        case 'request_garden_plot': {
+            $user = requireJsonRole('customer');
+            $plotId = (int)($_POST['plot_id'] ?? 0);
+
+            // Switched to lowercase table name
+            $check = $pdo->prepare("SELECT Status FROM community_plots WHERE PlotID = ?");
+            $check->execute([$plotId]);
+            $plot = $check->fetch(PDO::FETCH_ASSOC);
+
+            if (!$plot || $plot['Status'] !== 'Available') {
+                respond(['ok' => false, 'error' => 'This plot is no longer available.']);
+            }
+
+            // Switched to lowercase table name
+            $stmt = $pdo->prepare("UPDATE community_plots SET Status = 'Pending Approval', OccupantID = ? WHERE PlotID = ?");
+            $stmt->execute([$user['id'], $plotId]);
+            respond(['ok' => true]);
+            break;
+        }   
 
         // ---------------- ADMIN ----------------
 

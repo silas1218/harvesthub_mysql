@@ -56,6 +56,30 @@ CREATE TABLE PASSWORD_RESET (
 -- Plots
 -- ---------------------------------------------------------
 
+CREATE TABLE IF NOT EXISTS GARDEN_PLOTS (
+    PlotID INT AUTO_INCREMENT PRIMARY KEY,
+    GardenerID INT NOT NULL,
+    CropName VARCHAR(100) NOT NULL,
+    PlantedDate DATE NOT NULL,
+    EstHarvestDate DATE NOT NULL,
+    Status ENUM('Planted', 'Growing', 'Harvested', 'Failed') DEFAULT 'Planted',
+    Notes TEXT,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS COMMUNITY_PLOTS (
+    PlotID INT AUTO_INCREMENT PRIMARY KEY,
+    PlotName VARCHAR(20) NOT NULL,
+    Status ENUM('Available', 'Pending Approval', 'Occupied') DEFAULT 'Available',
+    OccupantID INT DEFAULT NULL,
+    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Generate 8 standard plots for the map
+INSERT INTO COMMUNITY_PLOTS (PlotName) VALUES 
+('Plot A1'), ('Plot A2'), ('Plot A3'), ('Plot A4'), 
+('Plot B1'), ('Plot B2'), ('Plot B3'), ('Plot B4');
+
 CREATE TABLE PLOT (
     PltID      INT AUTO_INCREMENT PRIMARY KEY,
     Label      VARCHAR(80)  NOT NULL,
