@@ -52,7 +52,7 @@ CREATE TABLE PASSWORD_RESET (
     PRIMARY KEY (Email)
 );
 
--- ---------------------------------------------------------
+-- ---------------------------------------------------------    
 -- Plots
 -- ---------------------------------------------------------
 
@@ -116,6 +116,14 @@ CREATE TABLE RESOURCE_TXN (
     FOREIGN KEY (CoordID) REFERENCES GARDEN_COORDINATOR(CoordID),
     FOREIGN KEY (ResourceID) REFERENCES RESOURCE(ResourceID)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS PERSONAL_INVENTORY (
+    ItemID INT AUTO_INCREMENT PRIMARY KEY,
+    GardenerID INT NOT NULL,
+    ItemName VARCHAR(100) NOT NULL,
+    Qty INT NOT NULL DEFAULT 1,
+    AddedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ---------------------------------------------------------
 -- Produce Exchange Board

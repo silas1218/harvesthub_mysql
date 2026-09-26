@@ -151,58 +151,6 @@ document.getElementById('croplog-form').addEventListener('submit', async (e) => 
   }
 });
 
-// ---------- Resources ----------
-
-async function loadResources() {
-  const res = await fetch('api.php?action=resources');
-  const data = await res.json();
-  if (!data.ok) return;
-
-  document.getElementById('resource-select').innerHTML = data.resources.map(r => `
-    <option value="${r.ResourceID}" ${r.AvailableQty === 0 ? 'disabled' : ''}>
-      ${escapeHtml(r.Name)} (${r.AvailableQty} left)
-    </option>
-  `).join('');
-}
-
-async function loadMyRequests() {
-  const res = await fetch('api.php?action=my_resource_requests');
-  const data = await res.json();
-  const el = document.getElementById('my-requests-list');
-  if (!data.ok) return;
-
-  if (data.requests.length === 0) {
-    el.innerHTML = '<p class="text-muted" style="font-size: 0.85rem;">No requests yet.</p>';
-    return;
-  }
-
-  const badgeClass = { Requested: 'badge-brown', Approved: 'badge-green', Rejected: 'badge-neutral' };
-  el.innerHTML = data.requests.map(r => `
-    <div style="display:flex; justify-content: space-between; align-items:center; border-bottom: 1px solid var(--line); padding: 6px 0;">
-      <span style="font-size: 0.85rem;">${escapeHtml(String(r.Qty))}x ${escapeHtml(r.Name)}</span>
-      <span class="badge ${badgeClass[r.Status] || 'badge-neutral'}">${escapeHtml(r.Status)}</span>
-    </div>
-  `).join('');
-}
-
-document.getElementById('resource-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const alertEl = document.getElementById('resource-alert');
-  alertEl.hidden = true;
-
-  const resourceId = document.getElementById('resource-select').value;
-  const qty = document.getElementById('resource-qty').value;
-
-  const result = await postAction('resource_request', { resource_id: resourceId, qty });
-  if (result.ok) {
-    showToast('Resource requested!', 'success');
-    loadResources();
-    loadMyRequests();
-  } else {
-    alertEl.textContent = result.error || 'Could not submit request.';
-    alertEl.hidden = false;
-  }
-});
 
 const plotBtn = document.getElementById('request-plot-btn');
 const plotAlert = document.getElementById('plot-request-alert');

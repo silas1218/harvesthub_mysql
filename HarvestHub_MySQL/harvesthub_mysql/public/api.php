@@ -548,7 +548,57 @@ try {
             $stmt->execute([$user['id']]);
             respond(['ok' => true, 'requests' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
         }
+        
+        case 'return_resource': {
+            $user = requireJsonRole('customer');
+            $txnId = $_POST['txn_id'] ?? '';
 
+            if (!ctype_digit((string) $txnId)) {
+                respond(['ok' => false, 'error' => 'Invalid transaction.'], 422);
+            }
+
+            // Updates the transaction status to 'Returned' only if they own it and it is currently 'Approved'
+            $stmt = $pdo->prepare("UPDATE RESOURCE_TXN SET Status = 'Returned' WHERE TxnID = ? AND GardenerID = ? AND Status = 'Approved'");
+            $stmt->execute([(int) $txnId, $user['id']]);
+
+            if ($stmt->rowCount() > 0) {
+                respond(['ok' => true]);
+            } else {
+                respond(['ok' => false, 'error' => 'Could not return this item.'], 400);
+            }
+        }
+
+        // ---------------------------------------------------------
+        // Personal Inventory Endpoints
+        // ---------------------------------------------------------
+        
+        case 'get_personal_inventory': {
+            $user = requireJsonRole('customer');
+            $stmt = $pdo->prepare("SELECT ItemID, ItemName, Qty, AddedAt FROM PERSONAL_INVENTORY WHERE GardenerID = ? ORDER BY AddedAt DESC");
+            $stmt->execute([$user['id']]);
+            respond(['ok' => true, 'items' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        }
+
+        case 'add_personal_item': {
+            $user = requireJsonRole('customer');
+            $name = trim($_POST['item_name'] ?? '');
+            $qty = (int)($_POST['qty'] ?? 1);
+
+            if (empty($name) || $qty < 1) respond(['ok' => false, 'error' => 'Invalid item data.'], 422);
+
+            $stmt = $pdo->prepare("INSERT INTO PERSONAL_INVENTORY (GardenerID, ItemName, Qty) VALUES (?, ?, ?)");
+            $stmt->execute([$user['id'], $name, $qty]);
+            respond(['ok' => true]);
+        }
+
+        case 'remove_personal_item': {
+            $user = requireJsonRole('customer');
+            $itemId = (int)($_POST['item_id'] ?? 0);
+
+            $stmt = $pdo->prepare("DELETE FROM PERSONAL_INVENTORY WHERE ItemID = ? AND GardenerID = ?");
+            $stmt->execute([$itemId, $user['id']]);
+            respond(['ok' => true]);
+        }
         // ---------------- STAFF ----------------
 
         case 'pending_applications': {
