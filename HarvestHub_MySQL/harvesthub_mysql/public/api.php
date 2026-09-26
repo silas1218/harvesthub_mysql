@@ -140,7 +140,7 @@ try {
             $role = null;
 
             // 1. Check if the user is a Community Gardener
-            $stmt = $pdo->prepare("SELECT GardenerID as id, Name, PasswordHash FROM COMMUNITY_GARDENER WHERE Email = ?");
+            $stmt = $pdo->prepare("SELECT GardenerID as id, Name, PasswordHash FROM COMMUNITY_GARDENER WHERE Email = ? AND Status = 'Active'");
             $stmt->execute([$email]);
             if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $userRecord = $row;
@@ -149,7 +149,7 @@ try {
 
             // 2. Check if the user is a Garden Coordinator
             if (!$userRecord) {
-                $stmt = $pdo->prepare("SELECT CoordID as id, Name, PasswordHash FROM GARDEN_COORDINATOR WHERE Email = ?");
+                $stmt = $pdo->prepare("SELECT CoordID as id, Name, PasswordHash FROM GARDEN_COORDINATOR WHERE Email = ? AND Status = 'Active'");
                 $stmt->execute([$email]);
                 if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                     $userRecord = $row;
@@ -159,7 +159,7 @@ try {
 
             // 3. Check if the user is a System Administrator
             if (!$userRecord) {
-                $stmt = $pdo->prepare("SELECT AdminID as id, Name, PasswordHash FROM SYSTEM_ADMINISTRATOR WHERE Email = ?");
+                $stmt = $pdo->prepare("SELECT AdminID as id, Name, PasswordHash FROM SYSTEM_ADMINISTRATOR WHERE Email = ? AND Status = 'Active'");
                 $stmt->execute([$email]);
                 if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                     $userRecord = $row;
@@ -738,6 +738,59 @@ try {
         }
 
         // ---------------------------------------------------------
+        // Customer Dashboard Overview
+        // ---------------------------------------------------------
+
+        case 'customer_dashboard_overview': {
+            $user = requireJsonRole('customer');
+
+            // 1. KPI Counts
+            $plotsStmt = $pdo->prepare("SELECT COUNT(*) FROM PLOT WHERE GardenerID = ? AND Status = 'Occupied'");
+            $plotsStmt->execute([$user['id']]);
+            $activePlots = (int)$plotsStmt->fetchColumn();
+
+            $resourcesStmt = $pdo->prepare("SELECT COUNT(*) FROM RESOURCE_TXN WHERE GardenerID = ? AND Status = 'Requested'");
+            $resourcesStmt->execute([$user['id']]);
+            $pendingResources = (int)$resourcesStmt->fetchColumn();
+
+            $listingsStmt = $pdo->prepare("SELECT COUNT(*) FROM EXCHANGE_BOARD WHERE GardenerID = ? AND Status = 'Active'");
+            $listingsStmt->execute([$user['id']]);
+            $myListings = (int)$listingsStmt->fetchColumn();
+
+            // 2. Recent Maintenance (last 4 logs)
+            $logsStmt = $pdo->prepare("
+                SELECT CropName, MaintenanceNotes, HarvestYield, LoggedAt 
+                FROM CROP_LOG 
+                WHERE GardenerID = ? 
+                ORDER BY LoggedAt DESC 
+                LIMIT 4
+            ");
+            $logsStmt->execute([$user['id']]);
+            $recentLogs = $logsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // 3. New on Exchange (last 4 active listings)
+            $exchangeStmt = $pdo->query("
+                SELECT ProduceName, Qty, Description, CreatedAt 
+                FROM EXCHANGE_BOARD 
+                WHERE Status = 'Active' 
+                ORDER BY CreatedAt DESC 
+                LIMIT 4
+            ");
+            $recentExchange = $exchangeStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            respond([
+                'ok' => true,
+                'stats' => [
+                    'active_plots' => $activePlots,
+                    'pending_resources' => $pendingResources,
+                    'my_listings' => $myListings
+                ],
+                'recent_logs' => $recentLogs,
+                'recent_exchange' => $recentExchange
+            ]);
+        }
+
+        // ---------------------------------------------------------
         // Analytics Endpoints
         // ---------------------------------------------------------
 
@@ -1022,8 +1075,8 @@ try {
 
         case 'accounts': {
             requireJsonRole('admin');
-            $gardeners = $pdo->query("SELECT GardenerID AS id, Name, Email, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location FROM COMMUNITY_GARDENER ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
-            $coordinators = $pdo->query("SELECT CoordID AS id, Name, Email, Shift, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location FROM GARDEN_COORDINATOR ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
+            $gardeners = $pdo->query("SELECT GardenerID AS id, Name, Email, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location FROM COMMUNITY_GARDENER WHERE Status = 'Active' ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
+            $coordinators = $pdo->query("SELECT CoordID AS id, Name, Email, Shift, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location FROM GARDEN_COORDINATOR WHERE Status = 'Active' ORDER BY Name")->fetchAll(PDO::FETCH_ASSOC);
             respond(['ok' => true, 'gardeners' => $gardeners, 'coordinators' => $coordinators]);
         }
 
@@ -1103,7 +1156,26 @@ try {
             respond(['ok' => true]);
         }
 
-        case 'delete_account': {
+        case 'create_admin': {
+            requireJsonRole('admin');
+            $name = trim($_POST['name'] ?? '');
+            $email = trim($_POST['email'] ?? '');
+            $password = $_POST['password'] ?? '';
+
+            if (empty($name) || empty($email) || strlen($password) < 8) {
+                respond(['ok' => false, 'error' => 'Name, valid email, and 8+ char password required.'], 422);
+            }
+
+            try {
+                $pdo->prepare("INSERT INTO SYSTEM_ADMINISTRATOR (Name, Email, PasswordHash, Status) VALUES (?, ?, ?, 'Active')")
+                    ->execute([htmlspecialchars($name, ENT_QUOTES, 'UTF-8'), $email, password_hash($password, PASSWORD_BCRYPT)]);
+                respond(['ok' => true]);
+            } catch (PDOException $e) {
+                respond(['ok' => false, 'error' => 'That email is already in use.'], 409);
+            }
+        }
+
+        case 'archive_account': {
             requireJsonRole('admin');
             $table = $_POST['table'] ?? '';
             $id = $_POST['id'] ?? '';
@@ -1111,37 +1183,51 @@ try {
             if (!isset($map[$table]) || !ctype_digit((string) $id)) respond(['ok' => false, 'error' => 'Invalid request.'], 422);
 
             $idNum = (int) $id;
+            [$tbl, $col] = $map[$table];
 
+            // Archive the account instead of deleting it
+            $pdo->prepare("UPDATE $tbl SET Status = 'Archived' WHERE $col = ?")->execute([$idNum]);
+            
+            // If it's a gardener, unassign their plot so the community can use it again
             if ($table === 'gardener') {
-                $pdo->beginTransaction();
-                try {
-                    // Release any plot assigned to this gardener
-                    $pdo->prepare("UPDATE PLOT SET GardenerID = NULL, Status = 'Available' WHERE GardenerID = ?")->execute([$idNum]);
-
-                    // Removes associated transaction/log records
-                    $pdo->prepare("DELETE FROM PLOT_APPLICATION WHERE GardenerID = ?")->execute([$idNum]);
-                    $pdo->prepare("DELETE FROM CROP_LOG WHERE GardenerID = ?")->execute([$idNum]);
-                    $pdo->prepare("DELETE FROM RESOURCE_TXN WHERE GardenerID = ?")->execute([$idNum]);
-                    $pdo->prepare("DELETE FROM EXCHANGE_ORDER WHERE GardenerID = ?")->execute([$idNum]);
-
-                    // Deletes listings created by the gardener
-                    $pdo->prepare("DELETE FROM EXCHANGE_ORDER WHERE ListingID IN (SELECT ListingID FROM EXCHANGE_LISTING WHERE GardenerID = ?)")->execute([$idNum]);
-                    $pdo->prepare("DELETE FROM EXCHANGE_LISTING WHERE GardenerID = ?")->execute([$idNum]);
-
-                    // Deletes gardener profile
-                    $pdo->prepare("DELETE FROM COMMUNITY_GARDENER WHERE GardenerID = ?")->execute([$idNum]);
-
-                    $pdo->commit();
-                } catch (Throwable $t) {
-                    $pdo->rollBack();
-                    throw $t;
-                }
-            } else {
-                [$tbl, $col] = $map[$table];
-                $pdo->prepare("DELETE FROM $tbl WHERE $col = ?")->execute([$idNum]);
+                $pdo->prepare("UPDATE PLOT SET GardenerID = NULL, Status = 'Available' WHERE GardenerID = ?")->execute([$idNum]);
             }
 
             respond(['ok' => true]);
+        }
+
+        case 'archived_accounts': {
+            requireJsonRole('admin');
+            $gardeners = $pdo->query("SELECT GardenerID AS id, Name, Email, 'Customer' as Role, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location, '—' as Shift FROM COMMUNITY_GARDENER WHERE Status = 'Archived'");
+            $coords = $pdo->query("SELECT CoordID AS id, Name, Email, 'Staff' as Role, COALESCE(NULLIF(Location, ''), 'Not provided') AS Location, Shift FROM GARDEN_COORDINATOR WHERE Status = 'Archived'");
+            $admins = $pdo->query("SELECT AdminID AS id, Name, Email, 'Admin' as Role, '—' AS Location, '—' as Shift FROM SYSTEM_ADMINISTRATOR WHERE Status = 'Archived'");
+            
+            $all = array_merge($gardeners->fetchAll(PDO::FETCH_ASSOC), $coords->fetchAll(PDO::FETCH_ASSOC), $admins->fetchAll(PDO::FETCH_ASSOC));
+            respond(['ok' => true, 'accounts' => $all]);
+        }
+
+        case 'unarchive_account': {
+            requireJsonRole('admin');
+            $role = $_POST['role'] ?? '';
+            $id = (int)($_POST['id'] ?? 0);
+            
+            $map = ['Customer' => ['COMMUNITY_GARDENER', 'GardenerID'], 'Staff' => ['GARDEN_COORDINATOR', 'CoordID'], 'Admin' => ['SYSTEM_ADMINISTRATOR', 'AdminID']];
+            if (!isset($map[$role]) || !$id) respond(['ok' => false, 'error' => 'Invalid request.'], 422);
+
+            [$tbl, $col] = $map[$role];
+            $pdo->prepare("UPDATE $tbl SET Status = 'Active' WHERE $col = ?")->execute([$id]);
+            respond(['ok' => true]);
+        }
+
+        case 'activity_data': {
+            requireJsonRole('admin');
+            $stats = [
+                'Crop Logs' => (int) $pdo->query("SELECT COUNT(*) FROM CROP_LOG")->fetchColumn(),
+                'Plot Applications' => (int) $pdo->query("SELECT COUNT(*) FROM PLOT_APPLICATION")->fetchColumn(),
+                'Tool Requests' => (int) $pdo->query("SELECT COUNT(*) FROM RESOURCE_TXN")->fetchColumn(),
+                'Exchange Listings' => (int) $pdo->query("SELECT COUNT(*) FROM EXCHANGE_LISTING")->fetchColumn(),
+            ];
+            respond(['ok' => true, 'labels' => array_keys($stats), 'values' => array_values($stats)]);
         }
 
         default:

@@ -1,5 +1,3 @@
-// admin.js — Admin dashboard logic
-
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -27,6 +25,9 @@ function filterTableByName(inputId, tableId) {
 }
 
 async function loadStats() {
+  const statsRow = document.getElementById('stats-row');
+  if (!statsRow) return; 
+
   const res = await fetch('api.php?action=stats');
   const data = await res.json();
   if (!data.ok) return;
@@ -43,7 +44,7 @@ async function loadStats() {
     ['Completed Trades', data.stats.completed_trades],
   ];
 
-  document.getElementById('stats-row').innerHTML = cards.map(([label, value]) => `
+  statsRow.innerHTML = cards.map(([label, value]) => `
     <div class="stat-card">
       <div class="stat-value">${value}</div>
       <div class="stat-label">${label}</div>
@@ -52,17 +53,20 @@ async function loadStats() {
 }
 
 async function loadAccounts() {
+  const gardenersTable = document.getElementById('gardeners-table');
+  if (!gardenersTable) return;
+
   const res = await fetch('api.php?action=accounts');
   const data = await res.json();
   if (!data.ok) return;
 
-  document.getElementById('gardeners-table').innerHTML = data.gardeners.map(g => `
+  gardenersTable.innerHTML = data.gardeners.map(g => `
     <tr data-name="${escapeHtml(g.Name)}" data-location="${escapeHtml(g.Location || '')}">
       <td>${escapeHtml(g.Name)}</td>
       <td>${escapeHtml(g.Email)}</td>
       <td>${escapeHtml(g.Location || 'Not provided')}</td>
       <td class="text-right">
-        <button type="button" class="btn btn-accent btn-sm delete-btn" data-table="gardener" data-id="${g.id}" data-name="${escapeHtml(g.Name)}">Remove</button>
+        <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="gardener" data-id="${g.id}" data-name="${escapeHtml(g.Name)}">Archive</button>
       </td>
     </tr>
   `).join('') || '<tr><td colspan="4" class="text-muted">No gardeners yet.</td></tr>';
@@ -74,7 +78,7 @@ async function loadAccounts() {
       <td>${escapeHtml(c.Shift)}</td>
       <td>${escapeHtml(c.Location || 'Not provided')}</td>
       <td class="text-right">
-        <button type="button" class="btn btn-accent btn-sm delete-btn" data-table="coordinator" data-id="${c.id}" data-name="${escapeHtml(c.Name)}">Remove</button>
+        <button type="button" class="btn btn-ghost btn-sm delete-btn" data-table="coordinator" data-id="${c.id}" data-name="${escapeHtml(c.Name)}">Archive</button>
       </td>
     </tr>
   `).join('') || '<tr><td colspan="5" class="text-muted">No coordinators yet.</td></tr>';
@@ -89,11 +93,13 @@ async function loadAccounts() {
 // ---------- Pending Account Requests ----------
 
 async function loadSignupRequests() {
+  const tbody = document.getElementById('signups-list');
+  if (!tbody) return;
+
   const res = await fetch('api.php?action=pending_signups');
   const data = await res.json();
   if (!data.ok) return;
 
-  const tbody = document.getElementById('signups-list');
   const emptyEl = document.getElementById('signups-empty');
 
   if (data.requests.length === 0) {
@@ -161,42 +167,137 @@ const deleteConfirmBtn = document.getElementById('delete-confirm');
 let pendingDelete = null;
 
 function openDeleteModal(table, id, name) {
+  if (!deleteModal) return; // Safety check
   pendingDelete = { table, id };
-  deleteModalBody.textContent = `Remove ${name}'s account? This cannot be undone.`;
+  deleteModalBody.textContent = `Archive ${name}'s account? This cannot be undone.`;
   deleteModal.hidden = false;
   deleteConfirmBtn.focus();
 }
+
 function closeDeleteModal() {
+  if (!deleteModal) return; // Safety check
   deleteModal.hidden = true;
   pendingDelete = null;
 }
-deleteCancelBtn.addEventListener('click', closeDeleteModal);
-deleteModal.addEventListener('click', (e) => { if (e.target === deleteModal) closeDeleteModal(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !deleteModal.hidden) closeDeleteModal(); });
 
-deleteConfirmBtn.addEventListener('click', async () => {
-  if (!pendingDelete) return;
-  const { table, id } = pendingDelete;
-  closeDeleteModal();
+if (deleteCancelBtn) deleteCancelBtn.addEventListener('click', closeDeleteModal);
+if (deleteModal) {
+    deleteModal.addEventListener('click', (e) => { if (e.target === deleteModal) closeDeleteModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !deleteModal.hidden) closeDeleteModal(); });
+}
 
-  const res = await fetch('api.php', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ action: 'delete_account', table, id }),
-  });
+if (deleteConfirmBtn) {
+    deleteConfirmBtn.addEventListener('click', async () => {
+      if (!pendingDelete) return;
+      const { table, id } = pendingDelete;
+      closeDeleteModal();
+
+      const res = await fetch('api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ action: 'archive_account', table, id }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Account archived.', 'success');
+        loadAccounts();
+      } else {
+        showToast(data.error || 'Could not archive account.', 'danger');
+      }
+    });
+}
+
+// ---------- Archived Accounts Logic ----------
+async function loadArchivedAccounts() {
+  const table = document.getElementById('archived-table');
+  if (!table) return; // Only run on the archived page
+
+  const res = await fetch('api.php?action=archived_accounts');
   const data = await res.json();
-  if (data.ok) {
-    showToast('Account removed.', 'success');
-    loadAccounts();
-    loadStats();
-  } else {
-    showToast(data.error || 'Could not remove account.', 'danger');
+  
+  if (!data.ok || data.accounts.length === 0) {
+    table.innerHTML = '<tr><td colspan="6" class="text-muted">No archived accounts found.</td></tr>';
+    return;
   }
-});
 
+  table.innerHTML = data.accounts.map(a => `
+    <tr>
+      <td>${escapeHtml(a.Name)}</td>
+      <td>${escapeHtml(a.Email)}</td>
+      <td><span class="badge badge-neutral">${escapeHtml(a.Role)}</span></td>
+      <td>${escapeHtml(a.Location)}</td>
+      <td>${escapeHtml(a.Shift)}</td>
+      <td class="text-right">
+        <button type="button" class="btn btn-accent btn-sm unarchive-btn" data-role="${a.Role}" data-id="${a.id}">Unarchive</button>
+      </td>
+    </tr>
+  `).join('');
+
+  document.querySelectorAll('.unarchive-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const res = await fetch('api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ action: 'unarchive_account', role: btn.dataset.role, id: btn.dataset.id })
+      });
+      const result = await res.json();
+      if (result.ok) {
+        showToast('Account successfully unarchived and restored.', 'success');
+        loadArchivedAccounts();
+      } else {
+        showToast(result.error || 'Failed to unarchive.', 'danger');
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// ---------- Chart.js Graph & Report Export Logic ----------
+async function renderActivityGraph() {
+  const ctx = document.getElementById('activityChart');
+  if (!ctx) return; // Only run on the dashboard page
+
+  const res = await fetch('api.php?action=activity_data');
+  const data = await res.json();
+  if (!data.ok) return;
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        label: 'Total Platform Actions',
+        data: data.values,
+        backgroundColor: '#a8562e',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+}
+
+
+// ---------- SINGLE INITIALIZATION BLOCK ----------
 document.addEventListener('DOMContentLoaded', () => {
+  
+  // 1. Fire all loaders. The safety checks (!table, !ctx, etc.) will prevent them from crashing on the wrong pages.
+  loadStats();
+  loadAccounts();
+  loadSignupRequests();
+  loadArchivedAccounts();
+  renderActivityGraph();
+
+  // 2. Search functionality
   document.querySelectorAll('[data-search-target]').forEach(button => {
     const input = document.getElementById(button.dataset.searchTarget);
+    if (!input) return; 
+    
     const filter = () => filterTableByName(button.dataset.searchTarget, button.dataset.tableTarget);
     button.addEventListener('click', filter);
     input.addEventListener('keydown', event => {
@@ -204,7 +305,56 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  loadStats();
-  loadAccounts();
-  loadSignupRequests();
+  // 3. Create Admin Form Logic
+  const createAdminForm = document.getElementById('create-admin-form');
+  if (createAdminForm) {
+    createAdminForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const submitBtn = createAdminForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+
+      const res = await fetch('api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          action: 'create_admin',
+          name: document.getElementById('new-admin-name').value,
+          email: document.getElementById('new-admin-email').value,
+          password: document.getElementById('new-admin-pass').value
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Administrator account created successfully!', 'success');
+        createAdminForm.reset();
+      } else {
+        showToast(data.error || 'Failed to create account.', 'danger');
+      }
+      submitBtn.disabled = false;
+    });
+  }
+
+  // 4. Export Report Button
+  const exportBtn = document.getElementById('export-report-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async () => {
+      const res = await fetch('api.php?action=stats');
+      const data = await res.json();
+      if (!data.ok) return;
+
+      let csvContent = "data:text/csv;charset=utf-8,Metric,Value\n";
+      for (const [key, value] of Object.entries(data.stats)) {
+        csvContent += `${key.replace('_', ' ').toUpperCase()},${value}\n`;
+      }
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `HarvestHub_Report_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+  }
 });
