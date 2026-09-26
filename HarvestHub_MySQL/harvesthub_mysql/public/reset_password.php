@@ -34,7 +34,14 @@ if (!$email || !$token) {
       
       <div class="field field-underline">
         <label for="password">New Password</label>
-        <input type="password" id="password" required minlength="6">
+        <input type="password" id="password" autocomplete="new-password" required minlength="8">
+        <ul id="reset-password-reqs" class="password-reqs">
+          <li data-requirement="length" class="invalid">At least 8 characters</li>
+          <li data-requirement="upper" class="invalid">At least 1 uppercase letter</li>
+          <li data-requirement="lower" class="invalid">At least 1 lowercase letter</li>
+          <li data-requirement="number" class="invalid">At least 1 number</li>
+          <li data-requirement="special" class="invalid">At least 1 special character</li>
+        </ul>
       </div>
       <button type="submit" class="btn btn-light btn-block">Update Password</button>
       <p class="form-alert" id="reset-alert" role="alert" hidden></p>
@@ -43,10 +50,48 @@ if (!$email || !$token) {
 </div>
 
 <script>
-document.getElementById('reset-form').addEventListener('submit', async (e) => {
+const resetForm = document.getElementById('reset-form');
+const passwordInput = document.getElementById('password');
+const requirementsList = document.getElementById('reset-password-reqs');
+const resetAlert = document.getElementById('reset-alert');
+const passwordRequirements = [
+  ['length', value => value.length >= 8],
+  ['upper', value => /[A-Z]/.test(value)],
+  ['lower', value => /[a-z]/.test(value)],
+  ['number', value => /\d/.test(value)],
+  ['special', value => /[\W_]/.test(value)]
+];
+
+function updatePasswordRequirements() {
+  const value = passwordInput.value;
+  passwordRequirements.forEach(([name, test]) => {
+    const requirement = requirementsList.querySelector(`[data-requirement="${name}"]`);
+    const valid = test(value);
+    requirement.classList.toggle('valid', valid);
+    requirement.classList.toggle('invalid', !valid);
+  });
+}
+
+passwordInput.addEventListener('focus', () => requirementsList.classList.add('active'));
+passwordInput.addEventListener('input', updatePasswordRequirements);
+passwordInput.addEventListener('blur', () => {
+  const isValid = passwordRequirements.every(([, test]) => test(passwordInput.value));
+  if (passwordInput.value === '' || isValid) requirementsList.classList.remove('active');
+});
+
+resetForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const alertEl = document.getElementById('reset-alert');
-    alertEl.hidden = true;
+  resetAlert.hidden = true;
+
+  const isPasswordValid = passwordRequirements.every(([, test]) => test(passwordInput.value));
+  if (!isPasswordValid) {
+    updatePasswordRequirements();
+    requirementsList.classList.add('active');
+    resetAlert.textContent = 'Please meet all password requirements.';
+    resetAlert.hidden = false;
+    passwordInput.focus();
+    return;
+  }
 
     try {
         const res = await fetch('api.php', {
@@ -65,12 +110,12 @@ document.getElementById('reset-form').addEventListener('submit', async (e) => {
             alert('Password successfully updated. You can now log in.');
             window.location.href = 'login.php';
         } else {
-            alertEl.textContent = data.error;
-            alertEl.hidden = false;
+          resetAlert.textContent = data.error;
+          resetAlert.hidden = false;
         }
     } catch (err) {
-        alertEl.textContent = 'Network error. Please try again.';
-        alertEl.hidden = false;
+        resetAlert.textContent = 'Network error. Please try again.';
+        resetAlert.hidden = false;
     }
 });
 </script>
