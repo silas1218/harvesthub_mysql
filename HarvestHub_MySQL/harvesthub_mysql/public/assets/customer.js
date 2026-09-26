@@ -29,7 +29,7 @@ async function loadPlot() {
   const res = await fetch('api.php?action=my_plot');
   const data = await res.json();
   const el = document.getElementById('plot-status');
-  if (!data.ok) return;
+  if (!el || !data.ok) return;
 
   if (data.plots.length > 0) {
     const pendingUnassignment = data.pending_application?.RequestType === 'Unassign';
@@ -87,16 +87,19 @@ async function loadPlot() {
     </div>
   `;
 
-  document.getElementById('apply-plot-btn').addEventListener('click', async () => {
-    const pltId = document.getElementById('plot-select').value;
-    const result = await postAction('apply_plot', { plt_id: pltId });
-    if (result.ok) {
-      showToast('Application submitted!', 'success');
-      loadPlot();
-    } else {
-      showToast(result.error || 'Could not submit application.', 'danger');
-    }
-  });
+  const applyPlotBtn = document.getElementById('apply-plot-btn');
+  if (applyPlotBtn) {
+    applyPlotBtn.addEventListener('click', async () => {
+      const pltId = document.getElementById('plot-select').value;
+      const result = await postAction('apply_plot', { plt_id: pltId });
+      if (result.ok) {
+        showToast('Application submitted!', 'success');
+        loadPlot();
+      } else {
+        showToast(result.error || 'Could not submit application.', 'danger');
+      }
+    });
+  }
 }
 
 // ---------- Crop Log ----------
@@ -105,7 +108,7 @@ async function loadCropLog() {
   const res = await fetch('api.php?action=my_croplog');
   const data = await res.json();
   const el = document.getElementById('croplog-list');
-  if (!data.ok) return;
+  if (!el || !data.ok) return;
 
   if (data.logs.length === 0) {
     el.innerHTML = '<p class="text-muted" style="font-size: 0.88rem;">No entries yet.</p>';
@@ -124,33 +127,35 @@ async function loadCropLog() {
   `).join('');
 }
 
-document.getElementById('croplog-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const alertEl = document.getElementById('croplog-alert');
-  alertEl.hidden = true;
+const croplogForm = document.getElementById('croplog-form');
+if (croplogForm) {
+  croplogForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const alertEl = document.getElementById('croplog-alert');
+    alertEl.hidden = true;
 
-  const cropName = document.getElementById('crop-name').value.trim();
-  if (cropName === '') {
-    alertEl.textContent = 'Crop name is required.';
-    alertEl.hidden = false;
-    return;
-  }
+    const cropName = document.getElementById('crop-name').value.trim();
+    if (cropName === '') {
+      alertEl.textContent = 'Crop name is required.';
+      alertEl.hidden = false;
+      return;
+    }
 
-  const result = await postAction('croplog_create', {
-    crop_name: cropName,
-    notes: document.getElementById('crop-notes').value.trim(),
-    yield: document.getElementById('crop-yield').value.trim(),
+    const result = await postAction('croplog_create', {
+      crop_name: cropName,
+      notes: document.getElementById('crop-notes').value.trim(),
+      yield: document.getElementById('crop-yield').value.trim(),
+    });
+
+    if (result.ok) {
+      e.target.reset();
+      loadCropLog();
+    } else {
+      alertEl.textContent = result.error || 'Could not save entry.';
+      alertEl.hidden = false;
+    }
   });
-
-  if (result.ok) {
-    e.target.reset();
-    loadCropLog();
-  } else {
-    alertEl.textContent = result.error || 'Could not save entry.';
-    alertEl.hidden = false;
-  }
-});
-
+}
 
 const plotBtn = document.getElementById('request-plot-btn');
 const plotAlert = document.getElementById('plot-request-alert');
@@ -158,6 +163,7 @@ const plotSuccess = document.getElementById('plot-request-success');
 const availablePlotsEl = document.getElementById('available-plots');
 
 function renderAvailablePlots(plots) {
+  if (!availablePlotsEl) return;
   if (plots.length === 0) {
     availablePlotsEl.innerHTML = '<p class="text-muted" style="font-size: 0.85rem;">No plots are available right now. Check back later.</p>';
     return;
@@ -173,39 +179,45 @@ function renderAvailablePlots(plots) {
     </div>
   `;
 
-  document.getElementById('more-plot-apply').addEventListener('click', async () => {
-    const applyBtn = document.getElementById('more-plot-apply');
-    applyBtn.disabled = true;
-    plotAlert.hidden = true;
-    plotSuccess.hidden = true;
+  const morePlotApply = document.getElementById('more-plot-apply');
+  if (morePlotApply) {
+    morePlotApply.addEventListener('click', async () => {
+      morePlotApply.disabled = true;
+      if (plotAlert) plotAlert.hidden = true;
+      if (plotSuccess) plotSuccess.hidden = true;
 
-    const result = await postAction('apply_plot', {
-      plt_id: document.getElementById('more-plot-select').value,
+      const result = await postAction('apply_plot', {
+        plt_id: document.getElementById('more-plot-select').value,
+      });
+
+      if (result.ok) {
+        if (plotSuccess) {
+          plotSuccess.textContent = 'Plot request submitted for Coordinator approval.';
+          plotSuccess.hidden = false;
+        }
+        availablePlotsEl.hidden = true;
+        if (plotBtn) plotBtn.textContent = 'Request for more plots';
+      } else {
+        if (plotAlert) {
+          plotAlert.textContent = result.error || 'Could not submit plot request.';
+          plotAlert.hidden = false;
+        }
+        morePlotApply.disabled = false;
+      }
     });
-
-    if (result.ok) {
-      plotSuccess.textContent = 'Plot request submitted for Coordinator approval.';
-      plotSuccess.hidden = false;
-      availablePlotsEl.hidden = true;
-      plotBtn.textContent = 'Request for more plots';
-    } else {
-      plotAlert.textContent = result.error || 'Could not submit plot request.';
-      plotAlert.hidden = false;
-      applyBtn.disabled = false;
-    }
-  });
+  }
 }
 
 if (plotBtn) {
   plotBtn.addEventListener('click', async () => {
-    if (!availablePlotsEl.hidden) {
+    if (availablePlotsEl && !availablePlotsEl.hidden) {
       availablePlotsEl.hidden = true;
       plotBtn.textContent = 'Request for more plots';
       return;
     }
 
-    plotAlert.hidden = true;
-    plotSuccess.hidden = true;
+    if (plotAlert) plotAlert.hidden = true;
+    if (plotSuccess) plotSuccess.hidden = true;
     plotBtn.disabled = true;
 
     try {
@@ -214,21 +226,81 @@ if (plotBtn) {
       if (!res.ok || !data.ok) throw new Error(data.error || 'Could not load available plots.');
 
       renderAvailablePlots(data.available_plots);
-      availablePlotsEl.hidden = false;
+      if (availablePlotsEl) availablePlotsEl.hidden = false;
       plotBtn.textContent = 'Hide available plots';
     } catch (err) {
-      plotAlert.textContent = err.message;
-      plotAlert.hidden = false;
+      if (plotAlert) {
+        plotAlert.textContent = err.message;
+        plotAlert.hidden = false;
+      }
     } finally {
       plotBtn.disabled = false;
     }
   });
 }
 
+// ---------- Customer Dashboard Overview Loader ----------
+
+async function loadCustomerDashboard() {
+  const kpiPlots = document.getElementById('kpi-plots');
+  if (!kpiPlots) return; // Exit if not on customer_dashboard.php
+
+  try {
+    const res = await fetch('api.php?action=customer_dashboard_overview');
+    const data = await res.json();
+    if (!data.ok) return;
+
+    // 1. Update KPI numbers
+    kpiPlots.textContent = data.stats.active_plots;
+    document.getElementById('kpi-resources').textContent = data.stats.pending_resources;
+    document.getElementById('kpi-listings').textContent = data.stats.my_listings;
+
+    // 2. Update Recent Maintenance
+    const logsContainer = document.getElementById('recent-logs-list');
+    if (logsContainer) {
+      if (data.recent_logs.length === 0) {
+        logsContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding:12px 0;">No maintenance logged yet.</p>';
+      } else {
+        logsContainer.innerHTML = data.recent_logs.map(log => `
+          <div style="border-bottom: 1px solid var(--line, #e2e8f0); padding: 8px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+              <strong>${escapeHtml(log.CropName)}</strong>
+              <span class="text-muted" style="font-size: 0.75rem;">${escapeHtml(log.LoggedAt.split(' ')[0])}</span>
+            </div>
+            ${log.MaintenanceNotes ? `<div class="text-muted" style="font-size: 0.8rem;">${escapeHtml(log.MaintenanceNotes)}</div>` : ''}
+          </div>
+        `).join('');
+      }
+    }
+
+    // 3. Update New on the Exchange
+    const exchangeContainer = document.getElementById('recent-exchange-list');
+    if (exchangeContainer) {
+      if (data.recent_exchange.length === 0) {
+        exchangeContainer.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding:12px 0;">No active exchange listings right now.</p>';
+      } else {
+        exchangeContainer.innerHTML = data.recent_exchange.map(item => `
+          <div style="border-bottom: 1px solid var(--line, #e2e8f0); padding: 8px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+              <strong>${escapeHtml(item.ProduceName)}</strong>
+              <span class="badge badge-neutral" style="font-size: 0.75rem;">${escapeHtml(item.Qty)}</span>
+            </div>
+            ${item.Description ? `<div class="text-muted" style="font-size: 0.8rem;">${escapeHtml(item.Description)}</div>` : ''}
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load dashboard overview:', err);
+  }
+}
+
+// Unified DOM Initializer
 document.addEventListener('DOMContentLoaded', () => {
-  loadPlot();
-  loadCropLog();
-  loadResources();
-  loadMyRequests();
-  setInterval(loadPlot, 5000);
+  loadCustomerDashboard();
+  if (typeof loadPlot === 'function') loadPlot();
+  if (typeof loadCropLog === 'function') loadCropLog();
+  if (document.getElementById('plot-status')) {
+    setInterval(loadPlot, 5000);
+  }
 });

@@ -1,7 +1,4 @@
 // app.js — Produce Exchange Board frontend logic
-// Fetch-based AJAX calls to api.php, client-side form validation
-// (mirrored, never trusted, on the server), debounced search/filter/sort,
-// a claim confirmation modal, and a live notes character counter.
 
 const API_URL = 'api.php';
 const CROP_PATTERN = /^[A-Za-z\s\-']+$/;
@@ -31,7 +28,7 @@ const claimModalBody = document.getElementById('claim-modal-body');
 const claimCancelBtn = document.getElementById('claim-cancel');
 const claimConfirmBtn = document.getElementById('claim-confirm');
 
-let pendingClaim = null; // { listingId, btnEl }
+let pendingClaim = null;
 
 // ---------- Rendering ----------
 
@@ -42,14 +39,15 @@ function escapeHtml(str) {
 }
 
 function renderListings(listings) {
+  if (!listingsEl || !resultsCountEl) return;
   listingsEl.innerHTML = '';
   resultsCountEl.textContent = listings.length;
 
   if (listings.length === 0) {
-    emptyStateEl.hidden = false;
+    if (emptyStateEl) emptyStateEl.hidden = false;
     return;
   }
-  emptyStateEl.hidden = true;
+  if (emptyStateEl) emptyStateEl.hidden = true;
 
   for (const item of listings) {
     const li = document.createElement('li');
@@ -75,12 +73,13 @@ function renderListings(listings) {
   });
 }
 
-// ---------- API calls (AJAX / Fetch) ----------
+// ---------- API calls ----------
 
 async function loadListings() {
+  if (!sortEl || !listingsEl) return;
   const params = new URLSearchParams({ action: 'list', sort: sortEl.value });
-  if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
-  if (minQtyEl.value) params.set('min_qty', minQtyEl.value);
+  if (searchEl && searchEl.value.trim()) params.set('search', searchEl.value.trim());
+  if (minQtyEl && minQtyEl.value) params.set('min_qty', minQtyEl.value);
 
   try {
     const res = await fetch(`${API_URL}?${params.toString()}`);
@@ -126,126 +125,138 @@ async function claimListing(listingId, btnEl) {
 
 function openClaimModal(btnEl) {
   pendingClaim = { listingId: btnEl.dataset.id, btnEl };
-  claimModalBody.textContent =
-    `Claim ${btnEl.dataset.qty} of "${btnEl.dataset.crop}"? It will be removed from the board once you confirm.`;
-  claimModal.hidden = false;
-  claimConfirmBtn.focus();
+  if (claimModalBody) {
+    claimModalBody.textContent = `Claim ${btnEl.dataset.qty} of "${btnEl.dataset.crop}"? It will be removed from the board once you confirm.`;
+  }
+  if (claimModal) claimModal.hidden = false;
+  if (claimConfirmBtn) claimConfirmBtn.focus();
 }
 
 function closeClaimModal() {
-  claimModal.hidden = true;
+  if (claimModal) claimModal.hidden = true;
   pendingClaim = null;
 }
 
-claimCancelBtn.addEventListener('click', closeClaimModal);
-claimModal.addEventListener('click', (e) => {
-  if (e.target === claimModal) closeClaimModal();
-});
+if (claimCancelBtn) claimCancelBtn.addEventListener('click', closeClaimModal);
+if (claimModal) {
+  claimModal.addEventListener('click', (e) => {
+    if (e.target === claimModal) closeClaimModal();
+  });
+}
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !claimModal.hidden) closeClaimModal();
+  if (e.key === 'Escape' && claimModal && !claimModal.hidden) closeClaimModal();
 });
 
-claimConfirmBtn.addEventListener('click', () => {
-  if (!pendingClaim) return;
-  const { listingId, btnEl } = pendingClaim;
-  claimModal.hidden = true;
-  claimListing(listingId, btnEl);
-  pendingClaim = null;
-});
+if (claimConfirmBtn) {
+  claimConfirmBtn.addEventListener('click', () => {
+    if (!pendingClaim) return;
+    const { listingId, btnEl } = pendingClaim;
+    if (claimModal) claimModal.hidden = true;
+    claimListing(listingId, btnEl);
+    pendingClaim = null;
+  });
+}
 
 // ---------- Form validation + submit ----------
 
 function validateForm() {
   let valid = true;
+  if (!cropEl || !qtyEl) return valid;
   const crop = cropEl.value.trim();
 
   if (crop.length === 0 || crop.length > 60 || !CROP_PATTERN.test(crop)) {
     cropEl.classList.add('invalid');
-    cropErrorEl.hidden = false;
+    if (cropErrorEl) cropErrorEl.hidden = false;
     valid = false;
   } else {
     cropEl.classList.remove('invalid');
-    cropErrorEl.hidden = true;
+    if (cropErrorEl) cropErrorEl.hidden = true;
   }
 
   const qtyNum = Number(qtyEl.value);
   if (!Number.isInteger(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
     qtyEl.classList.add('invalid');
-    qtyErrorEl.hidden = false;
+    if (qtyErrorEl) qtyErrorEl.hidden = false;
     valid = false;
   } else {
     qtyEl.classList.remove('invalid');
-    qtyErrorEl.hidden = true;
+    if (qtyErrorEl) qtyErrorEl.hidden = true;
   }
 
   return valid;
 }
 
-// Live character-remaining calculation for the notes field
 function updateNotesCount() {
+  if (!notesEl || !notesCountEl) return;
   const remaining = 200 - notesEl.value.length;
   notesCountEl.textContent = remaining;
 }
-notesEl.addEventListener('input', updateNotesCount);
 
-// Validate on blur for immediate feedback, not just on submit
-cropEl.addEventListener('blur', () => { if (cropEl.value) validateForm(); });
-qtyEl.addEventListener('blur', () => { if (qtyEl.value) validateForm(); });
+if (notesEl) notesEl.addEventListener('input', updateNotesCount);
+if (cropEl) cropEl.addEventListener('blur', () => { if (cropEl.value) validateForm(); });
+if (qtyEl) qtyEl.addEventListener('blur', () => { if (qtyEl.value) validateForm(); });
 
-formEl.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  formAlertEl.hidden = true;
-  formSuccessEl.hidden = true;
+if (formEl) {
+  formEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (formAlertEl) formAlertEl.hidden = true;
+    if (formSuccessEl) formSuccessEl.hidden = true;
 
-  if (!validateForm()) {
-    return;
-  }
+    if (!validateForm()) return;
 
-  const formData = new URLSearchParams({
-    action: 'create',
-    crop: cropEl.value.trim(),
-    qty: qtyEl.value,
-    notes: notesEl.value.trim(),
-  });
-
-  try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData,
+    const formData = new URLSearchParams({
+      action: 'create',
+      crop: cropEl.value.trim(),
+      qty: qtyEl.value,
+      notes: notesEl ? notesEl.value.trim() : '',
     });
-    const data = await res.json();
 
-    if (data.ok) {
-      formSuccessEl.textContent = 'Listing posted successfully!';
-      formSuccessEl.hidden = false;
-      formEl.reset();
-      updateNotesCount();
-      loadListings();
-    } else {
-      formAlertEl.textContent = (data.errors || [data.error]).join(' ');
-      formAlertEl.hidden = false;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        if (formSuccessEl) {
+          formSuccessEl.textContent = 'Listing posted successfully!';
+          formSuccessEl.hidden = false;
+        }
+        formEl.reset();
+        updateNotesCount();
+        loadListings();
+      } else {
+        if (formAlertEl) {
+          formAlertEl.textContent = (data.errors || [data.error]).join(' ');
+          formAlertEl.hidden = false;
+        }
+      }
+    } catch (err) {
+      if (formAlertEl) {
+        formAlertEl.textContent = 'Network error while posting listing.';
+        formAlertEl.hidden = false;
+      }
     }
-  } catch (err) {
-    formAlertEl.textContent = 'Network error while posting listing.';
-    formAlertEl.hidden = false;
-  }
-});
+  });
+}
 
-// ---------- Search / filter / sort (debounced) ----------
+// ---------- Search / filter / sort ----------
 
 let debounceTimer;
 function debouncedLoad() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(loadListings, 300);
 }
-searchEl.addEventListener('input', debouncedLoad);
-minQtyEl.addEventListener('input', debouncedLoad);
-sortEl.addEventListener('change', loadListings);
+if (searchEl) searchEl.addEventListener('input', debouncedLoad);
+if (minQtyEl) minQtyEl.addEventListener('input', debouncedLoad);
+if (sortEl) sortEl.addEventListener('change', loadListings);
 
 // ---------- Toasts ----------
 
 function showToast(message, type = 'success') {
+  if (!toastContainer) return;
   const toastEl = document.createElement('div');
   toastEl.className = `toast${type === 'danger' ? ' toast-danger' : ''}`;
   toastEl.textContent = message;
