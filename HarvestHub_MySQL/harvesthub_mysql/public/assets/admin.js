@@ -13,14 +13,14 @@ function showToast(message, type = 'success') {
 }
 
 function filterTableByName(inputId, tableId) {
-  const query = document.getElementById(inputId).value.trim().toLowerCase();
+  const input = document.getElementById(inputId);
   const table = document.getElementById(tableId);
-  if (!table) return;
+  if (!input || !table) return;
+
+  const query = input.value.trim().toLowerCase();
 
   table.querySelectorAll('tr[data-name]').forEach(row => {
-    const name = row.dataset.name.toLowerCase();
-    const location = (row.dataset.location || '').toLowerCase();
-    row.hidden = query !== '' && !name.includes(query) && !location.includes(query);
+    row.hidden = query !== '' && !row.textContent.toLowerCase().includes(query);
   });
 }
 
@@ -293,15 +293,16 @@ document.addEventListener('DOMContentLoaded', () => {
   loadArchivedAccounts();
   renderActivityGraph();
 
-  // 2. Search functionality
-  document.querySelectorAll('[data-search-target]').forEach(button => {
-    const input = document.getElementById(button.dataset.searchTarget);
-    if (!input) return; 
-    
-    const filter = () => filterTableByName(button.dataset.searchTarget, button.dataset.tableTarget);
-    button.addEventListener('click', filter);
+  // 2. Account search
+  document.querySelectorAll('[data-table-search]').forEach(input => {
+    const filter = () => filterTableByName(input.id, input.dataset.tableSearch);
+    input.addEventListener('input', filter);
+    input.addEventListener('search', filter);
     input.addEventListener('keydown', event => {
-      if (event.key === 'Enter') filter();
+      if (event.key === 'Escape') {
+        input.value = '';
+        filter();
+      }
     });
   });
 

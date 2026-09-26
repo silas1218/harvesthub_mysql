@@ -19,8 +19,6 @@ $navTitle = 'System Dashboard';
 <div class="app-layout">
   <?php include __DIR__ . '/admin_sidebar.php'; ?>
   <div class="main-content">
-    <?php include __DIR__ . '/nav_partial.php'; ?>
-    
     <main class="wrap" id="top" style="max-width: 1200px; padding-top: 32px;">
       
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">

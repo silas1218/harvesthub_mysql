@@ -23,7 +23,8 @@ CREATE TABLE SYSTEM_ADMINISTRATOR (
     AdminID      INT AUTO_INCREMENT PRIMARY KEY,
     Name         VARCHAR(120)  NOT NULL,
     Email        VARCHAR(190)  NOT NULL UNIQUE,
-    PasswordHash VARCHAR(255)  NOT NULL
+    PasswordHash VARCHAR(255)  NOT NULL,
+    Status       VARCHAR(20)   NOT NULL DEFAULT 'Active'
 ) ENGINE=InnoDB;
 
 CREATE TABLE GARDEN_COORDINATOR (
@@ -32,7 +33,8 @@ CREATE TABLE GARDEN_COORDINATOR (
     Email        VARCHAR(190)  NOT NULL UNIQUE,
     PasswordHash VARCHAR(255)  NOT NULL,
     Shift        VARCHAR(20)   NOT NULL DEFAULT 'Morning',
-    Location     VARCHAR(60)   NOT NULL DEFAULT 'Not provided'
+    Location     VARCHAR(60)   NOT NULL DEFAULT 'Not provided',
+    Status       VARCHAR(20)   NOT NULL DEFAULT 'Active'
 ) ENGINE=InnoDB;
 
 CREATE TABLE COMMUNITY_GARDENER (
@@ -41,7 +43,8 @@ CREATE TABLE COMMUNITY_GARDENER (
     Email        VARCHAR(190)  NOT NULL UNIQUE,
     PasswordHash VARCHAR(255)  NOT NULL,
     Age          INT           NULL,
-    Location     VARCHAR(60)   NULL
+    Location     VARCHAR(60)   NULL,
+    Status       VARCHAR(20)   NOT NULL DEFAULT 'Active'
 ) ENGINE=InnoDB;
 
 

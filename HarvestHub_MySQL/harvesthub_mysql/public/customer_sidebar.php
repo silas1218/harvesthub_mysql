@@ -6,6 +6,10 @@ $currentPage = basename($_SERVER['PHP_SELF']);
   <div class="sidebar-brand">
     <span class="sprout">🌱</span> HarvestHub
   </div>
+
+  <div class="sidebar-user">
+    <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+  </div>
   
   <nav class="sidebar-nav">
     <a href="customer_dashboard.php" class="sidebar-link <?= $currentPage === 'customer_dashboard.php' ? 'active' : '' ?>">

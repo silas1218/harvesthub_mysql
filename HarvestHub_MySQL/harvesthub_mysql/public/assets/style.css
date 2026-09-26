@@ -1295,6 +1295,14 @@ table.data-table {
   gap: 8px;
 }
 
+.sidebar-user {
+  margin: -24px 12px 28px;
+  color: #d1d9d3;
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;

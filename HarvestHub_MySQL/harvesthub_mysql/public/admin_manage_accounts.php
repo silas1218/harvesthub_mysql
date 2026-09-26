@@ -18,8 +18,6 @@ $navTitle = 'Manage Accounts';
   <?php include __DIR__ . '/admin_sidebar.php'; ?>
 
   <div class="main-content">
-    <?php include __DIR__ . '/nav_partial.php'; ?>
-    
     <main class="wrap" id="top" style="max-width: 1200px; padding-top: 32px;">
       
       <!-- New: Create Admin Account Panel -->
@@ -35,18 +33,24 @@ $navTitle = 'Manage Accounts';
 
       <!-- Pending Account Requests -->
       <div class="panel" style="margin-bottom: 24px;">
-        <p class="panel-title">Pending Account Requests</p>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+          <p class="panel-title" style="margin: 0;">Pending Account Requests</p>
+          <input type="search" id="search-pending-accounts" data-table-search="pending-signups-table" placeholder="Search requests..." aria-label="Search pending account requests" style="width: min(100%, 260px);">
+        </div>
         <div class="pending-request-list" id="signups-list"></div>
         <p class="text-muted" id="signups-empty" hidden>No pending account requests.</p>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+      <div style="display: grid; grid-template-columns: 1fr; gap: 24px;">
         <!-- Gardeners -->
         <div class="panel">
-          <p class="panel-title">Active Community Gardeners</p>
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+            <p class="panel-title" style="margin: 0;">Active Community Gardeners</p>
+            <input type="search" id="search-gardeners" data-table-search="gardeners-table" placeholder="Search gardeners..." aria-label="Search active community gardeners">
+          </div>
           <div class="table-wrap">
             <table class="data-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Email</th><th>Location</th><th>Actions</th></tr></thead>
               <tbody id="gardeners-table"></tbody>
             </table>
           </div>
@@ -54,10 +58,13 @@ $navTitle = 'Manage Accounts';
 
         <!-- Coordinators -->
         <div class="panel">
-          <p class="panel-title">Active Garden Coordinators</p>
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+            <p class="panel-title" style="margin: 0;">Active Garden Coordinators</p>
+            <input type="search" id="search-coordinators" data-table-search="coordinators-table" placeholder="Search coordinators..." aria-label="Search active garden coordinators">
+          </div>
           <div class="table-wrap">
             <table class="data-table">
-              <thead><tr><th>Name</th><th>Email</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Email</th><th>Shift</th><th>Location</th><th>Actions</th></tr></thead>
               <tbody id="coordinators-table"></tbody>
             </table>
           </div>
